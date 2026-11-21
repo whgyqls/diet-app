@@ -1,17 +1,34 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { FOODS, SEASONINGS } from '@/lib/data/load';
 import { isFoodExcludedByStyles } from '@/lib/nutrition/styleExclusion';
-import { countSelected, selectionProblems } from '@/lib/selection/selection';
+import {
+  EMPTY_SELECTION,
+  countSelected,
+  filterStepFoods,
+  selectionProblems,
+  stepFilters,
+} from '@/lib/selection/selection';
 import { useAppStore } from '@/lib/store/appStore';
 import { useHydrated } from '@/lib/store/useHydrated';
 import { parseProfile } from '@/lib/profile';
 import { STEPS } from '@/lib/ui-labels';
 import type { Food } from '@/types/food';
+import type { DietStyle, Selection } from '@/types/nutrition';
+import { ConfirmDialog } from './ConfirmDialog';
 import { FactsSheet } from './FactsSheet';
 import { FoodCard } from './FoodCard';
+import { KitSheet } from './KitSheet';
+import { UndoToast } from './UndoToast';
+
+type Undo = {
+  id: number;
+  message: string;
+  selection: Selection;
+  styles?: DietStyle[];
+};
 
 const PROBLEM_TEXT = {
   NEED_PROTEIN: '단백질 재료를 1개 이상 골라 주세요',
@@ -28,6 +45,11 @@ function Flow() {
   const s = useAppStore();
   const [filter, setFilter] = useState<string | null>(null);
   const [sheet, setSheet] = useState<Food | null>(null);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [kitsOpen, setKitsOpen] = useState(false);
+  const [undo, setUndo] = useState<Undo | null>(null);
+  const closeUndo = useCallback(() => setUndo(null), []);
+  const closeKits = useCallback(() => setKitsOpen(false), []);
   const step = Math.min(Math.max(s.step, 0), STEPS.length - 1);
   const cur = STEPS[step];
   const goal = parseProfile(s.profile)?.goal ?? s.profile.goal ?? 'maintain';
@@ -41,10 +63,50 @@ function Flow() {
     [s.selection, s.styles, goal],
   );
 
-  const foods = FOODS.filter((f) => f.category === cur.key);
-  const groups = [...new Set(foods.map((f) => f.group))];
-  const shown = filter ? foods.filter((f) => f.group === filter) : foods;
   const isSeasoning = cur.key === 'seasoning';
+  const foods = FOODS.filter((f) => f.category === cur.key);
+  const filters = isSeasoning
+    ? []
+    : stepFilters(foods, cur.key as Food['category']);
+  const shown = isSeasoning
+    ? []
+    : filterStepFoods(foods, cur.key as Food['category'], filter);
+  const stepIds = isSeasoning
+    ? SEASONINGS.map((x) => x.id)
+    : foods.map((f) => f.id);
+  const stepSelected = countSelected(
+    s.selection,
+    isSeasoning ? 'seasonings' : 'foods',
+    stepIds,
+  );
+  const totalSelected =
+    Object.keys(s.selection.foods).length +
+    Object.keys(s.selection.seasonings).length;
+
+  const remember = (message: string, withStyles = false) =>
+    // A new id re-keys the toast so its 10 s timer restarts.
+    setUndo((prev) => ({
+      id: (prev?.id ?? 0) + 1,
+      message,
+      selection: s.selection,
+      ...(withStyles ? { styles: s.styles } : {}),
+    }));
+  const resetAll = () => {
+    remember('고른 재료를 모두 초기화했어요');
+    s.replaceSelection(EMPTY_SELECTION);
+    setConfirmReset(false);
+  };
+  const resetStep = () => {
+    remember(`${cur.label} 단계를 초기화했어요`);
+    if (isSeasoning) s.clearAllSeasonings(stepIds);
+    else s.clearAllFoods(stepIds);
+  };
+  const restore = () => {
+    if (!undo) return;
+    s.replaceSelection(undo.selection);
+    if (undo.styles) s.replaceStyles(undo.styles);
+    setUndo(null);
+  };
 
   const go = (n: number) => {
     s.setStep(n);
@@ -66,7 +128,24 @@ function Flow() {
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-3 p-4 pb-32">
-      <h1 className="text-xl font-bold">재료 고르기</h1>
+      <div className="flex items-center gap-2">
+        <h1 className="flex-1 text-xl font-bold">재료 고르기</h1>
+        <button
+          type="button"
+          onClick={() => setKitsOpen(true)}
+          className="min-h-11 rounded-lg border border-emerald-600 px-3 text-sm font-medium text-emerald-800 dark:text-emerald-300"
+        >
+          내 재료 세트
+        </button>
+        <button
+          type="button"
+          disabled={totalSelected === 0}
+          onClick={() => setConfirmReset(true)}
+          className="min-h-11 rounded-lg border border-neutral-300 px-3 text-sm disabled:opacity-40 dark:border-neutral-600"
+        >
+          전체 초기화
+        </button>
+      </div>
       {!parseProfile(s.profile) && (
         <p className="rounded-lg bg-amber-100 p-3 text-sm text-amber-900">
           프로필이 아직 없어요.{' '}
@@ -118,25 +197,25 @@ function Flow() {
         </p>
       )}
 
-      {!isSeasoning && groups.length > 1 && (
+      {filters.length > 1 && (
         <div
           className="flex flex-wrap gap-2"
           role="group"
           aria-label="분류 필터"
         >
-          {[null, ...groups].map((g) => (
+          {[{ key: null, label: '전체' }, ...filters].map((g) => (
             <button
-              key={g ?? 'all'}
+              key={g.key ?? 'all'}
               type="button"
-              aria-pressed={filter === g}
-              onClick={() => setFilter(g)}
+              aria-pressed={filter === g.key}
+              onClick={() => setFilter(g.key)}
               className={`min-h-11 rounded-full border px-4 text-sm ${
-                filter === g
+                filter === g.key
                   ? 'border-emerald-600 bg-emerald-600 text-white'
                   : 'border-neutral-300 dark:border-neutral-600'
               }`}
             >
-              {g ?? '전체'}
+              {g.label}
             </button>
           ))}
         </div>
@@ -164,6 +243,14 @@ function Flow() {
           }
         >
           전체 해제
+        </button>
+        <button
+          type="button"
+          disabled={stepSelected === 0}
+          className="min-h-11 flex-1 rounded-lg border border-neutral-300 text-sm disabled:opacity-40 dark:border-neutral-600"
+          onClick={resetStep}
+        >
+          이 단계 초기화
         </button>
       </div>
       <p className="text-xs text-neutral-600 dark:text-neutral-400">
@@ -195,7 +282,6 @@ function Flow() {
                       <span className="block text-xs text-neutral-700 dark:text-neutral-300">
                         {x.unit.label} 기준 · 나트륨 {x.perUnit.sodium}mg
                         {x.free ? ' · 자유롭게' : ''}
-                        {x.oil ? ' · 기름' : ''}
                       </span>
                     </span>
                   </button>
@@ -246,6 +332,45 @@ function Flow() {
       </div>
 
       {sheet && <FactsSheet food={sheet} onClose={() => setSheet(null)} />}
+
+      {confirmReset && (
+        <ConfirmDialog
+          title="고른 재료를 모두 지울까요?"
+          body="모든 단계의 선택이 해제돼요. 프로필과 식단 스타일은 그대로예요."
+          confirmLabel="초기화"
+          onCancel={() => setConfirmReset(false)}
+          onConfirm={resetAll}
+        />
+      )}
+
+      {kitsOpen && (
+        <KitSheet
+          kits={s.kits}
+          selectedCount={totalSelected}
+          onSave={s.saveKit}
+          onRename={s.renameKit}
+          onDelete={s.deleteKit}
+          onLoad={(id, mode) => {
+            const kit = s.kits.find((k) => k.id === id);
+            remember(
+              `'${kit?.name ?? ''}' 세트를 ${mode === 'replace' ? '불러왔어요' : '합쳤어요'}`,
+              true,
+            );
+            s.loadKit(id, mode);
+            setKitsOpen(false);
+          }}
+          onClose={closeKits}
+        />
+      )}
+
+      {undo && (
+        <UndoToast
+          key={undo.id}
+          message={undo.message}
+          onUndo={restore}
+          onClose={closeUndo}
+        />
+      )}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import {
   KCAL_CHECK_EXCLUDED_GROUPS,
   KCAL_CHECK_TOLERANCE,
   KCAL_PER_GRAM,
+  OIL_GROUP,
 } from '@/lib/nutrition/constants';
 import { foodsFileSchema, seasoningsFileSchema } from './schemas';
 
@@ -22,9 +23,38 @@ describe('data/foods.json', () => {
     expect(foodsResult.error?.issues ?? []).toEqual([]);
   });
 
-  it('has 81 foods (68 from Phase 1 + 13 fat sources from Phase 2)', () => {
-    expect(foods).toHaveLength(81);
-    expect(foods.filter((f) => f.category === 'fat')).toHaveLength(13);
+  it('has 84 foods (68 from Phase 1 + 13 fat sources from Phase 2 + 3 oils moved from seasonings)', () => {
+    expect(foods).toHaveLength(84);
+    expect(foods.filter((f) => f.category === 'fat')).toHaveLength(16);
+  });
+
+  it('has the three cold-pressed oils as fat foods in the oil group, 1 tsp = 4.5 g, 4.5-9 g per meal (sesame oil 4.5 g)', () => {
+    const oils = foods.filter((f) => f.group === OIL_GROUP);
+    expect(oils.map((f) => f.id).sort()).toEqual(['olive-oil', 'perilla-oil', 'sesame-oil']);
+    for (const f of oils) {
+      expect(f.category, f.id).toBe('fat');
+      expect(f.basis, f.id).toBe('raw');
+      expect(f.unit, f.id).toEqual({ label: '작은술', grams: 4.5 });
+      expect(f.portion, f.id).toEqual({
+        min: 4.5,
+        max: f.id === 'sesame-oil' ? 4.5 : 9, // sesame oil: 1 tsp per meal (strong flavor)
+        step: 4.5,
+      });
+      expect(f.per100g.sodium, f.id).toBeLessThanOrEqual(7); // olive oil 7 mg/100 g in the CSV = 0.3 mg per tsp
+      expect(f.per100g.fat, f.id).toBeGreaterThan(99);
+    }
+    expect(oils.find((f) => f.id === 'olive-oil')?.name).toBe('엑스트라버진 올리브유');
+  });
+
+  it('takes the oil values from the raw-food CSV (식품성분표 유지류)', () => {
+    const code = (id: string) => foods.find((f) => f.id === id)?.source?.items.map((i) => [i.file, i.code]);
+    expect(code('olive-oil')).toEqual([['raw_foods_utf8.csv', 'R114-017000000-0000']]);
+    expect(code('perilla-oil')).toEqual([['raw_foods_utf8.csv', 'R114-003000000-0000']]);
+    expect(code('sesame-oil')).toEqual([['raw_foods_utf8.csv', 'R114-020000000-0000']]);
+    const sat = (id: string) => foods.find((f) => f.id === id)?.per100g.satFat;
+    expect(sat('olive-oil')).toBe(15.7); // CSV 15.73, rounded to 1 decimal like every food
+    expect(sat('perilla-oil')).toBe(8.8);
+    expect(sat('sesame-oil')).toBe(14.9);
   });
 
   it('has no duplicate ids', () => {
@@ -85,12 +115,9 @@ describe('data/seasonings.json', () => {
     expect(duplicates(seasonings.map((s) => s.id))).toEqual([]);
   });
 
-  it('marks exactly the three cold-pressed oils as oil, none of them salty or free', () => {
-    const oils = seasonings.filter((s) => s.oil);
-    expect(oils.map((s) => s.id).sort()).toEqual(['olive-oil', 'perilla-oil', 'sesame-oil']);
-    expect(oils.filter((s) => s.perUnit.sodium > 0 || s.free)).toEqual([]);
-    expect(oils.filter((s) => s.perUnit.satFat === undefined)).toEqual([]);
-    expect(oils.find((s) => s.id === 'olive-oil')?.name).toBe('엑스트라버진 올리브유');
+  it('no longer holds the oils (they are fat foods now)', () => {
+    expect(seasonings.filter((s) => s.id.endsWith('-oil')).map((s) => s.id)).toEqual([]);
+    expect(seasonings).toHaveLength(13);
   });
 
   it('shares no ids with foods', () => {

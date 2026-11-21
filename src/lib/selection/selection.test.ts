@@ -2,13 +2,21 @@ import { describe, expect, it } from 'vitest';
 import { FOODS } from '@/lib/data/load';
 import { isFoodExcludedByStyles } from '@/lib/nutrition/styleExclusion';
 import { nutritionFacts } from '@/lib/nutrition/nutritionFacts';
-import { createAppStore, type StateStorage } from '@/lib/store/appStore';
+import { OIL_GROUP } from '@/lib/nutrition/constants';
+import {
+  STORAGE_KEY,
+  createAppStore,
+  type StateStorage,
+} from '@/lib/store/appStore';
 import {
   EMPTY_SELECTION,
   clearAll,
   cycleStatus,
+  filterStepFoods,
+  migrateSelection,
   selectAll,
   selectionProblems,
+  stepFilters,
   toggleItem,
 } from './selection';
 
@@ -121,5 +129,119 @@ describe('store persistence', () => {
     s.getState().toggleStyle('lowCarb');
     s.getState().toggleStyle('lowCarb');
     expect(s.getState().styles).toEqual([]);
+  });
+
+  it('moves oils picked as seasonings in a version-1 save over to foods', async () => {
+    const storage = memory();
+    storage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        version: 1,
+        state: {
+          profile: {},
+          styles: [],
+          overrides: {},
+          selection: {
+            foods: { cod: 'ok' },
+            seasonings: { 'olive-oil': 'favorite', salt: 'ok' },
+          },
+          step: 4,
+        },
+      }),
+    );
+    const s = createAppStore(storage);
+    await s.persist.rehydrate();
+    expect(s.getState().selection).toEqual({
+      foods: { cod: 'ok', 'olive-oil': 'favorite' },
+      seasonings: { salt: 'ok' },
+    });
+    expect(s.getState().kits).toEqual([]);
+  });
+
+  it('replaceSelection swaps the whole selection (reset / undo)', () => {
+    const s = createAppStore(memory());
+    s.getState().toggleFood('cod');
+    const before = s.getState().selection;
+    s.getState().replaceSelection(EMPTY_SELECTION);
+    expect(s.getState().selection).toEqual(EMPTY_SELECTION);
+    s.getState().replaceSelection(before);
+    expect(s.getState().selection.foods).toEqual({ cod: 'ok' });
+  });
+
+  it('saves, renames, loads and deletes ingredient kits, and keeps them after a reload', async () => {
+    const storage = memory();
+    const a = createAppStore(storage);
+    a.getState().toggleFood('cod');
+    a.getState().toggleStyle('pescatarian');
+    expect(a.getState().saveKit('평일', true)).toBeNull();
+    expect(a.getState().saveKit(' 평일 ', false)).toBe('DUPLICATE');
+    const id = a.getState().kits[0].id;
+    expect(a.getState().renameKit(id, '주중')).toBeNull();
+    a.getState().replaceSelection(EMPTY_SELECTION);
+    a.getState().toggleStyle('pescatarian');
+
+    const b = createAppStore(storage);
+    await b.persist.rehydrate();
+    expect(b.getState().kits.map((k) => k.name)).toEqual(['주중']);
+    b.getState().loadKit(id, 'replace');
+    expect(b.getState().selection.foods).toEqual({ cod: 'ok' });
+    expect(b.getState().styles).toEqual(['pescatarian']);
+    b.getState().deleteKit(id);
+    expect(b.getState().kits).toEqual([]);
+  });
+});
+
+describe('migrateSelection', () => {
+  it('moves the given ids from seasonings to foods, keeping the status, and leaves the rest', () => {
+    const r = migrateSelection(
+      {
+        foods: { cod: 'ok' },
+        seasonings: { 'olive-oil': 'favorite', 'sesame-oil': 'ok', salt: 'ok' },
+      },
+      ['olive-oil', 'perilla-oil', 'sesame-oil'],
+    );
+    expect(r).toEqual({
+      foods: { cod: 'ok', 'olive-oil': 'favorite', 'sesame-oil': 'ok' },
+      seasonings: { salt: 'ok' },
+    });
+  });
+
+  it('keeps a status already set on the food side', () => {
+    const r = migrateSelection(
+      { foods: { 'olive-oil': 'favorite' }, seasonings: { 'olive-oil': 'ok' } },
+      ['olive-oil'],
+    );
+    expect(r).toEqual({ foods: { 'olive-oil': 'favorite' }, seasonings: {} });
+  });
+});
+
+describe('filterStepFoods (fat step: whole foods vs oils)', () => {
+  const fat = byCat('fat');
+  it('splits the fat step into nuts/seeds/avocado and oils', () => {
+    const whole = filterStepFoods(fat, 'fat', 'whole');
+    const oils = filterStepFoods(fat, 'fat', 'oil');
+    expect(oils.map((f) => f.id).sort()).toEqual([
+      'olive-oil',
+      'perilla-oil',
+      'sesame-oil',
+    ]);
+    expect(whole).toHaveLength(13);
+    expect(whole.some((f) => f.group === OIL_GROUP)).toBe(false);
+    expect(filterStepFoods(fat, 'fat', null)).toHaveLength(16);
+  });
+  it('filters other steps by group', () => {
+    const fish = filterStepFoods(byCat('protein'), 'protein', '생선');
+    expect(fish.length).toBeGreaterThan(0);
+    expect(fish.every((f) => f.group === '생선')).toBe(true);
+  });
+  it('lists the filter chips: fixed two for the fat step, groups elsewhere', () => {
+    expect(stepFilters(fat, 'fat')).toEqual([
+      { key: 'whole', label: '견과·씨앗·아보카도' },
+      { key: 'oil', label: '기름' },
+    ]);
+    expect(stepFilters(byCat('protein'), 'protein')[0]).toEqual({
+      key: '닭',
+      label: '닭',
+    });
   });
 });

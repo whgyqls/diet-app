@@ -1,6 +1,6 @@
 // Shared data types for data/foods.json and data/seasonings.json (PLAN.md section 6).
 
-/** fat = nuts, seeds, avocado: whole foods rich in unsaturated fat. */
+/** fat = nuts, seeds, avocado (whole foods rich in unsaturated fat) and cold-pressed oils (group OIL_GROUP). */
 export type FoodCategory = 'protein' | 'carb' | 'fiber' | 'fat';
 export type WeightBasis = 'raw' | 'cooked';
 
@@ -68,10 +68,8 @@ export type Seasoning = {
   id: string;
   name: string;
   unit: ServingUnit;
-  perUnit: { kcal: number; carbs: number; sodium: number; satFat?: number };
+  perUnit: { kcal: number; carbs: number; sodium: number };
   free?: boolean;
-  /** Cold-pressed oil (pure fat). Used by the kcal fill steps, not by the sodium budget. */
-  oil?: boolean;
   maxUnitsPerMeal: number;
 };
 

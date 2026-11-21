@@ -1,9 +1,14 @@
 'use client';
 
 import { bonusBadges } from '@/lib/nutrition/badges';
+import { OIL_GROUP } from '@/lib/nutrition/constants';
 import { foodHighlights } from '@/lib/nutrition/highlights';
 import type { Pref } from '@/lib/selection/selection';
-import { BASIS_LABELS, EXCLUDED_BY_STYLE_TEXT } from '@/lib/ui-labels';
+import {
+  BASIS_LABELS,
+  EXCLUDED_BY_STYLE_TEXT,
+  OIL_CARD_LABEL,
+} from '@/lib/ui-labels';
 import type { Food } from '@/types/food';
 
 const STATUS_TEXT: Record<'none' | 'ok' | 'favorite', string> = {
@@ -28,6 +33,7 @@ export function FoodCard({
   const h = foodHighlights(food);
   const badges = bonusBadges(food);
   const state = status ?? 'none';
+  const isOil = food.group === OIL_GROUP;
   return (
     <li
       className={`flex items-stretch overflow-hidden rounded-xl border ${
@@ -53,7 +59,13 @@ export function FoodCard({
         </span>
         <span className="text-xs text-neutral-700 dark:text-neutral-300">
           {h.keyLine.text}
+          {food.unit && ` · 1${food.unit.label} = ${food.unit.grams}g`}
         </span>
+        {isOil && (
+          <span className="w-fit rounded-full bg-orange-100 px-2 py-0.5 text-xs text-orange-900">
+            {OIL_CARD_LABEL}
+          </span>
+        )}
         {(h.chips.length > 0 || badges.length > 0) && (
           <span className="flex flex-wrap gap-1">
             {h.chips.map((c) => (

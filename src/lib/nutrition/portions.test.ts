@@ -3,7 +3,7 @@ import type { Food } from '@/types/food';
 import type { ComboFoods, MealTargets, PortionResult } from '@/types/nutrition';
 import { calcPortions, netCarbs, nutrientsOf } from './portions';
 import { KCAL_FILL_ORDER_LOW_CARB } from './constants';
-import { LUNCH, food, makeFood, seasoning } from './test-fixtures';
+import { LUNCH, food, makeFood } from './test-fixtures';
 
 const grams = (r: PortionResult, id: string) =>
   r.items.find((i) => i.food.id === id)?.grams;
@@ -13,7 +13,7 @@ function solve(
   t: MealTargets = LUNCH,
   oilIds: string[] = [],
 ): PortionResult {
-  const r = calcPortions(combo, t, oilIds.map(seasoning));
+  const r = calcPortions(combo, t, oilIds.map(food));
   if (!r) throw new Error('combo rejected');
   return r;
 }
@@ -166,7 +166,7 @@ describe('calcPortions: steps and limits', () => {
     );
     expect(grams(r, 'chicken-breast')).toBe(250);
     expect(grams(r, 'walnut')).toBe(30);
-    expect(r.oils).toEqual([{ seasoning: seasoning('olive-oil'), units: 2 }]);
+    expect(r.oils).toEqual([{ food: food('olive-oil'), grams: 9 }]); // 2 tsp = the oil's portion max
   });
 });
 
@@ -257,11 +257,46 @@ describe('calcPortions: fat fill (steps 3 and 5)', () => {
       LUNCH,
       ['perilla-oil', 'olive-oil'],
     );
-    expect(r.oils.map((o) => o.seasoning.id)).toEqual(['perilla-oil']);
-    expect(r.oils[0].units).toBeLessThanOrEqual(
-      seasoning('perilla-oil').maxUnitsPerMeal,
+    expect(r.oils.map((o) => o.food.id)).toEqual(['perilla-oil']);
+    expect(r.oils[0].grams).toBeLessThanOrEqual(
+      food('perilla-oil').portion.max,
     );
+    expect(onStep(food('perilla-oil'), r.oils[0].grams)).toBe(true);
     expect(r.kcalByStep.fatToStage1).toBeGreaterThan(0);
+  });
+
+  it('oil nutrients come from the oil food (fat and saturated fat from per100g, 4.5 g steps)', () => {
+    const r = solve(
+      { protein: food('cod'), fibers: [food('cabbage')] },
+      LUNCH,
+      ['sesame-oil'],
+    );
+    const oil = r.oils[0];
+    expect(oil.food.id).toBe('sesame-oil');
+    // Sesame oil is capped at 1 tsp (4.5 g) per meal.
+    expect(oil.grams).toBe(4.5);
+    const fromItems = (k: 'fat' | 'satFat' | 'kcal') =>
+      r.items.reduce((a, i) => a + (i.food.per100g[k] * i.grams) / 100, 0);
+    for (const k of ['fat', 'satFat', 'kcal'] as const)
+      expect(r.totals[k], k).toBeCloseTo(
+        fromItems(k) + (oil.food.per100g[k] * oil.grams) / 100,
+        9,
+      );
+  });
+
+  it('a nut fat source and an oil can be used in the same meal', () => {
+    const r = solve(
+      { protein: food('cod'), fibers: [food('cabbage')], fat: food('walnut') },
+      // Very roomy fat caps (this only checks that the two slots are separate): fat share is measured
+      // against the kcal eaten, and this lean meal is small.
+      { ...LUNCH, kcal: 800, fat: { stage1: 60, stage2: 60, stage3: 60 } },
+      ['olive-oil'],
+    );
+    // The walnut grows to its max first, then the oil fills.
+    expect(grams(r, 'walnut')).toBe(food('walnut').portion.max);
+    expect(r.oils.map((o) => o.food.id)).toEqual(['olive-oil']);
+    expect(r.oils[0].grams).toBeGreaterThan(0);
+    expect(r.items.some((i) => i.food.id === 'olive-oil')).toBe(false);
   });
 
   it('rejects a combo whose fat source does not fit at its minimum portion', () => {
@@ -420,10 +455,7 @@ describe('calcPortions: default-diet steps 5-6 and extra totals', () => {
     );
     const expected =
       r.items.reduce((a, i) => a + (i.food.per100g.satFat * i.grams) / 100, 0) +
-      r.oils.reduce(
-        (a, o) => a + (o.seasoning.perUnit.satFat ?? 0) * o.units,
-        0,
-      );
+      r.oils.reduce((a, o) => a + (o.food.per100g.satFat * o.grams) / 100, 0);
     expect(r.totals.satFat).toBeCloseTo(expected, 9);
     expect(r.totals.satFat).toBeGreaterThan(0);
   });

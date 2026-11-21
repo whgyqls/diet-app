@@ -993,6 +993,45 @@
       "source": {"items": [{"file": "raw_foods_utf8.csv", "code": "R108-064000001-0000", "name": "아보카도_생것"}], "method": "단일 항목"},
       "portion": {"min": 50, "max": 150, "step": 10},
       "cookingHint": "썰어서 곁들이기"
+    },
+    {
+      "id": "olive-oil",
+      "name": "엑스트라버진 올리브유",
+      "category": "fat",
+      "group": "기름",
+      "basis": "raw",
+      "per100g": {"kcal": 921, "protein": 0.0, "carbs": 0.0, "fiber": 0.0, "fat": 100.0, "satFat": 15.7, "sodium": 7, "cholesterol": 0},
+      "micro100g": {"potassium": 13, "iron": 0.0, "vitaminA": 6, "vitaminC": 0.0, "vitaminD": 0.0},
+      "source": {"items": [{"file": "raw_foods_utf8.csv", "code": "R114-017000000-0000", "name": "올리브유"}], "method": "단일 항목 '올리브유' (원자료가 엑스트라버진을 따로 구분하지 않음)"},
+      "portion": {"min": 4.5, "max": 9, "step": 4.5},
+      "unit": {"label": "작은술", "grams": 4.5},
+      "cookingHint": "샐러드에 두르기·약불 조리"
+    },
+    {
+      "id": "perilla-oil",
+      "name": "들기름",
+      "category": "fat",
+      "group": "기름",
+      "basis": "raw",
+      "per100g": {"kcal": 920, "protein": 0.0, "carbs": 0.1, "fiber": 0.0, "fat": 99.9, "satFat": 8.8, "sodium": 0, "cholesterol": 0},
+      "micro100g": {"potassium": 0, "calcium": 0, "iron": 0.0, "vitaminA": 2, "vitaminC": 0.0, "vitaminD": 0.0},
+      "source": {"items": [{"file": "raw_foods_utf8.csv", "code": "R114-003000000-0000", "name": "들기름"}], "method": "단일 항목"},
+      "portion": {"min": 4.5, "max": 9, "step": 4.5},
+      "unit": {"label": "작은술", "grams": 4.5},
+      "cookingHint": "나물 무침·마무리에 두르기"
+    },
+    {
+      "id": "sesame-oil",
+      "name": "참기름",
+      "category": "fat",
+      "group": "기름",
+      "basis": "raw",
+      "per100g": {"kcal": 920, "protein": 0.0, "carbs": 0.1, "fiber": 0.0, "fat": 99.8, "satFat": 14.9, "sodium": 0, "cholesterol": 0},
+      "micro100g": {"potassium": 0, "calcium": 0, "iron": 0.0, "vitaminA": 1, "vitaminC": 0.0, "vitaminD": 0.0},
+      "source": {"items": [{"file": "raw_foods_utf8.csv", "code": "R114-020000000-0000", "name": "참기름"}], "method": "단일 항목"},
+      "portion": {"min": 4.5, "max": 4.5, "step": 4.5},
+      "unit": {"label": "작은술", "grams": 4.5},
+      "cookingHint": "무침·볶음 마무리에 두르기"
     }
   ]
 }

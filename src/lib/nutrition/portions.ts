@@ -5,7 +5,7 @@ import type {
   MealTargets,
   NutrientTotals,
   PortionResult,
-  SeasoningUse,
+  PortionedFood,
 } from '@/types/nutrition';
 import {
   CARB_TOPUP_FOOD_IDS,
@@ -48,7 +48,7 @@ export function nutrientsOf(food: Food, grams: number): NutrientTotals {
   };
 }
 
-/** Oils carry no fat field in the data; they are pure fat, so fat = kcal / 9. */
+/** Seasonings carry kcal, carbs and sodium only (oils are fat foods, see OIL_GROUP). */
 export function seasoningNutrients(
   s: Seasoning,
   units: number,
@@ -59,8 +59,8 @@ export function seasoningNutrients(
     carbs: s.perUnit.carbs * units,
     netCarbs: s.perUnit.carbs * units,
     fiber: 0,
-    fat: s.oil ? (s.perUnit.kcal * units) / KCAL_PER_GRAM.fat : 0,
-    satFat: (s.perUnit.satFat ?? 0) * units,
+    fat: 0,
+    satFat: 0,
     sodium: s.perUnit.sodium * units,
     cholesterol: 0,
   };
@@ -108,22 +108,20 @@ function per100(f: Food, field: Field): number {
 function sumOf(
   g: Grams,
   field: Field,
-  oil?: SeasoningUse,
+  oil?: PortionedFood,
   skip?: Food,
 ): number {
   let s = 0;
   for (const [f, grams] of g)
     if (f !== skip) s += (per100(f, field) * grams) / 100;
-  if (oil && oil.units > 0)
-    s += seasoningNutrients(oil.seasoning, oil.units)[field];
+  if (oil && oil.grams > 0) s += (per100(oil.food, field) * oil.grams) / 100;
   return s;
 }
 
-function totalsOf(g: Grams, oil?: SeasoningUse): NutrientTotals {
+function totalsOf(g: Grams, oil?: PortionedFood): NutrientTotals {
   let t = ZERO_TOTALS;
   for (const [f, grams] of g) t = addTotals(t, nutrientsOf(f, grams));
-  if (oil && oil.units > 0)
-    t = addTotals(t, seasoningNutrients(oil.seasoning, oil.units));
+  if (oil && oil.grams > 0) t = addTotals(t, nutrientsOf(oil.food, oil.grams));
   return t;
 }
 
@@ -190,12 +188,12 @@ function fillFat(
   combo: ComboFoods,
   t: MealTargets,
   g: Grams,
-  oil: SeasoningUse | undefined,
+  oil: PortionedFood | undefined,
   fatCap: number,
 ): void {
   const f = combo.fat;
   const dF = f ? nutrientsOf(f, f.portion.step) : undefined;
-  const dOil = oil ? seasoningNutrients(oil.seasoning, 1) : undefined;
+  const dOil = oil ? nutrientsOf(oil.food, oil.food.portion.step) : undefined;
   const capShare = (fatCap * KCAL_PER_GRAM.fat) / t.kcal;
   // Later steps must not push protein past the goal's cap that step 4 filled to (nuts carry protein).
   const proteinCap = Math.max(t.protein.max, sumOf(g, 'protein', oil));
@@ -216,14 +214,20 @@ function fillFat(
     if (
       oil &&
       dOil &&
-      oil.units < oil.seasoning.maxUnitsPerMeal &&
+      nextOilGrams(oil) <= oil.food.portion.max &&
       fits(dOil)
     ) {
-      oil.units += 1;
+      oil.grams = nextOilGrams(oil);
       continue;
     }
     return;
   }
+}
+
+/** The oil starts unused (0 g); its first step is its portion minimum, then `step` at a time. */
+function nextOilGrams(oil: PortionedFood): number {
+  const { min, step } = oil.food.portion;
+  return oil.grams === 0 ? min : oil.grams + step;
 }
 
 /** Step 4: raise the protein food while protein <= max share and kcal <= target. */
@@ -231,7 +235,7 @@ function fillProtein(
   combo: ComboFoods,
   t: MealTargets,
   g: Grams,
-  oil: SeasoningUse | undefined,
+  oil: PortionedFood | undefined,
 ): void {
   const p = combo.protein;
   const d = nutrientsOf(p, p.portion.step);
@@ -255,7 +259,7 @@ function fillCarbs(
   combo: ComboFoods,
   t: MealTargets,
   g: Grams,
-  oil: SeasoningUse | undefined,
+  oil: PortionedFood | undefined,
 ): void {
   const c = combo.carb;
   if (!c || !t.carbTopUp || !CARB_TOPUP_FOOD_IDS.includes(c.id)) return;
@@ -281,13 +285,13 @@ function fillCarbs(
 }
 
 /**
- * Portions for one combo. `oils` = the user's cold-pressed oils in preference order.
- * Returns null when the fat source cannot fit at its minimum portion.
+ * Portions for one combo. `oils` = the user's cold-pressed oils (OIL_GROUP foods) in preference order;
+ * the first one fills the oil slot. Returns null when the fat source cannot fit at its minimum portion.
  */
 export function calcPortions(
   combo: ComboFoods,
   t: MealTargets,
-  oils: Seasoning[],
+  oils: Food[],
 ): PortionResult | null {
   const g: Grams = new Map();
   solveBase(combo, t, g);
@@ -304,13 +308,12 @@ export function calcPortions(
   const carbKcal = kcalOf(combo.carb);
   const veggieKcal = combo.fibers.reduce((a, v) => a + kcalOf(v), 0);
 
-  const oilKinds = oils.filter((s) => s.oil).slice(0, MAX_OIL_KINDS_PER_MEAL);
-  const oil: SeasoningUse | undefined = oilKinds[0]
-    ? { seasoning: oilKinds[0], units: 0 }
+  const oilKinds = oils.slice(0, MAX_OIL_KINDS_PER_MEAL);
+  const oil: PortionedFood | undefined = oilKinds[0]
+    ? { food: oilKinds[0], grams: 0 }
     : undefined;
   const fatKcal = () =>
-    kcalOf(combo.fat) +
-    (oil ? seasoningNutrients(oil.seasoning, oil.units).kcal : 0);
+    kcalOf(combo.fat) + (oil ? nutrientsOf(oil.food, oil.grams).kcal : 0);
 
   const byStep = {
     fatToStage1: 0,
@@ -362,7 +365,7 @@ export function calcPortions(
   const items = [combo.protein, combo.carb, ...combo.fibers, combo.fat]
     .filter((f): f is Food => f !== undefined)
     .map((food) => ({ food, grams: g.get(food)! }));
-  const usedOils = oil && oil.units > 0 ? [oil] : [];
+  const usedOils = oil && oil.grams > 0 ? [oil] : [];
 
   return {
     items,

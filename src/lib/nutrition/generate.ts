@@ -36,6 +36,7 @@ import {
   MICRO_SHORTFALL_RATIO,
   MICROS_HARD_FROM_FOOD,
   MMR_POOL_SIZE,
+  OIL_GROUP,
   PROTEIN_GROUPS,
   type ProteinGroup,
   SAT_FAT_KCAL_RATIO_MAX,
@@ -64,31 +65,35 @@ export function comboKey(c: ComboFoods): string {
 
 const byId = (a: { id: string }, b: { id: string }) => a.id.localeCompare(b.id);
 
+/** Cold-pressed oils fill their own slot, never the whole-food fat-source slot. */
+export function isOil(food: Pick<Food, 'category' | 'group'>): boolean {
+  return food.category === 'fat' && food.group === OIL_GROUP;
+}
+
 /** Selected oils, favorites first. */
-function orderedOils(
-  seasonings: Seasoning[],
-  prefs: Selection['seasonings'],
-): Seasoning[] {
-  const fav = (s: Seasoning) => (prefs[s.id] === 'favorite' ? 0 : 1);
-  return seasonings
-    .filter((s) => s.oil && prefs[s.id])
+function orderedOils(foods: Food[], prefs: Selection['foods']): Food[] {
+  const fav = (f: Food) => (prefs[f.id] === 'favorite' ? 0 : 1);
+  return foods
+    .filter((f) => isOil(f) && prefs[f.id])
     .sort((a, b) => fav(a) - fav(b) || byId(a, b));
 }
 
-/** Per-user seasoning setup shared by every combo of a meal. */
+/** Per-user oil and seasoning setup shared by every combo of a meal. */
 export type ComboContext = {
   selection: Selection;
-  oils: Seasoning[];
+  oils: Food[];
   suggestSeasonings: ReturnType<typeof seasoningPlanner>;
 };
 
+/** `foods` = the foods the oil slot may use (already filtered by exclusions). */
 export function comboContext(
+  foods: Food[],
   seasonings: Seasoning[],
   selection: Selection,
 ): ComboContext {
   return {
     selection,
-    oils: orderedOils(seasonings, selection.seasonings),
+    oils: orderedOils(foods, selection.foods),
     suggestSeasonings: seasoningPlanner(seasonings, selection.seasonings),
   };
 }
@@ -108,11 +113,12 @@ export function buildMealCombo(
     ZERO_TOTALS,
   );
   const totals = addTotals(portions.totals, seasTotals);
-  const micros = microsOf(portions.items);
+  const micros = microsOf([...portions.items, ...portions.oils]);
   const favorites =
-    portions.items.filter((i) => selection.foods[i.food.id] === 'favorite')
-      .length +
-    [...portions.oils, ...seas.picks].filter(
+    [...portions.items, ...portions.oils].filter(
+      (i) => selection.foods[i.food.id] === 'favorite',
+    ).length +
+    seas.picks.filter(
       (u) => selection.seasonings[u.seasoning.id] === 'favorite',
     ).length;
   return {
@@ -328,8 +334,9 @@ function mealCandidates(req: MealRequest): {
         !excludedGroups.has(f.group),
     )
     .sort(byId);
+  // Oils are not a fat-source choice; they go to the oil slot (comboContext).
   const of = (cat: Food['category']) =>
-    selected.filter((f) => f.category === cat);
+    selected.filter((f) => f.category === cat && !isOil(f));
   const lockedIn = (list: Food[]) => list.filter((f) => locked.has(f.id));
   const opt = req.options ?? {};
   // The user's per-meal vegetable count wins over the style's "two fiber sources".
@@ -367,7 +374,7 @@ function mealCandidates(req: MealRequest): {
     (s) => s.filter((f) => f && locked.has(f.id)).length <= 1,
   );
 
-  const ctx = comboContext(seasonings, selection);
+  const ctx = comboContext(selected, seasonings, selection);
   const candidates: MealCombo[] = [];
   if (locksOk) {
     for (const protein of proteinSlot)
@@ -604,7 +611,9 @@ export function generateDayPlan(req: DayRequest): DayPlan {
     ZERO_TOTALS,
   );
   const micros = microsOf(
-    meals.flatMap((m) => (m.combos[0] ? m.combos[0].items : [])),
+    meals.flatMap((m) =>
+      m.combos[0] ? [...m.combos[0].items, ...m.combos[0].oils] : [],
+    ),
   );
   // Warnings are computed once from the final values (flags.ts); with no plan only the setting ones.
   const flagDetails = computeFlags({

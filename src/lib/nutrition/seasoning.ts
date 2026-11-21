@@ -9,7 +9,7 @@ import type {
 import { MAX_SALTY_SEASONINGS_PER_MEAL } from './constants';
 
 export function isSalty(s: Seasoning): boolean {
-  return !s.free && !s.oil && s.perUnit.sodium > 0;
+  return !s.free && s.perUnit.sodium > 0;
 }
 
 type Option = {

@@ -194,7 +194,7 @@ export type KcalByStep = {
 
 export type PortionResult = {
   items: PortionedFood[];
-  oils: SeasoningUse[];
+  oils: PortionedFood[]; // cold-pressed oil (OIL_GROUP), separate from the fat-source slot
   totals: NutrientTotals; // foods + oils
   kcalByStep: Omit<KcalByStep, 'seasonings'>;
 };
@@ -228,7 +228,7 @@ export type ScoreBreakdown = {
 export type MealCombo = {
   key: string;
   items: PortionedFood[];
-  oils: SeasoningUse[];
+  oils: PortionedFood[];
   seasonings: SeasoningResult;
   totals: NutrientTotals; // everything that is eaten, seasonings included
   kcalByStep: KcalByStep;

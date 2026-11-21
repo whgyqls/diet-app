@@ -314,6 +314,11 @@ export const VEGGIE_DEFAULT_G = 100;
 export const PORTION_SOLVER_MAX_ITER = 10;
 /** Kinds of cold-pressed oil used in one meal. */
 export const MAX_OIL_KINDS_PER_MEAL = 1;
+/**
+ * Fat foods in this group are cold-pressed oils. They fill their own slot (0-1 per meal, used by the fat
+ * fill steps) and never the whole-food fat-source slot (nuts, seeds, avocado).
+ */
+export const OIL_GROUP = '기름';
 
 // ---- Seasonings (PLAN.md 5-3) -----------------------------------------------
 

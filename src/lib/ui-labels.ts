@@ -55,6 +55,17 @@ export const STEPS: {
 ];
 
 export const BASIS_LABELS = { raw: '생(조리 전) 기준', cooked: '조리 후 기준' };
+
+/** Fat step filter chips: whole fat foods vs cold-pressed oils. */
+export const FAT_FILTER_OIL = 'oil';
+export const FAT_FILTERS = [
+  { key: 'whole', label: '견과·씨앗·아보카도' },
+  { key: FAT_FILTER_OIL, label: '기름' },
+] as const;
+export const OIL_CARD_LABEL = '조리에도 쓸 수 있어요';
+
+/** How long the "되돌리기" toast stays after a reset or a kit load. */
+export const UNDO_TOAST_MS = 10_000;
 export const EXCLUDED_BY_STYLE_TEXT = '이 스타일에서는 추천에서 제외돼요';
 export const DISCLAIMER =
   '일반 성인 기준의 참고용이며 의료적 조언이 아닙니다. 신장 질환, 임신, 당뇨 약 복용 중이면 전문가와 상의하세요.';

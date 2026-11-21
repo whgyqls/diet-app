@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MealCombo, Selection } from '@/types/nutrition';
-import { COMBOS_PER_MEAL } from './constants';
+import { COMBOS_PER_MEAL, OIL_GROUP } from './constants';
 import {
   comboKey,
   comboProteinGroup,
@@ -165,6 +165,79 @@ describe('generateMealCombos', () => {
     expect(meal(fav).combos.some((c) => ids(c).includes(candidate.id))).toBe(
       true,
     );
+  });
+
+  it('never puts an oil in the fat-source slot: oils go to combo.oils, at most one kind', () => {
+    const oilIds = FOODS.filter((f) => f.group === OIL_GROUP).map((f) => f.id);
+    expect(oilIds).toHaveLength(3);
+    const all = [
+      ...full.combos,
+      ...meal(ALL, { seen: full.combos.map((c) => c.key) }).combos,
+    ];
+    for (const c of all) {
+      expect(ids(c).filter((id) => oilIds.includes(id))).toEqual([]);
+      expect(c.oils.length).toBeLessThanOrEqual(1);
+      for (const o of c.oils) expect(oilIds).toContain(o.food.id);
+    }
+    // With everything selected the oil fill is in use somewhere.
+    expect(all.some((c) => c.oils.length === 1)).toBe(true);
+  });
+
+  it('only uses an oil the user selected, favorites first', () => {
+    const noOil = {
+      ...ALL,
+      foods: Object.fromEntries(
+        FOODS.filter((f) => f.group !== OIL_GROUP).map((f) => [
+          f.id,
+          'ok' as const,
+        ]),
+      ),
+    };
+    for (const c of meal(noOil).combos) expect(c.oils).toEqual([]);
+    const favPerilla = {
+      ...ALL,
+      foods: { ...ALL.foods, 'perilla-oil': 'favorite' as const },
+    };
+    for (const c of meal(favPerilla).combos)
+      for (const o of c.oils) expect(o.food.id).toBe('perilla-oil');
+  });
+
+  it('a nut fat source and an oil can share a meal (separate slots)', () => {
+    const r = meal(only('cod', 'cabbage', 'walnut', 'olive-oil'));
+    const c = r.combos.find((x) => ids(x).includes('walnut'));
+    expect(c).toBeDefined();
+    expect(byCat(c!, 'fat').map((i) => i.food.id)).toEqual(['walnut']);
+  });
+
+  it('oils do not change the salty-seasoning rule (one kind, within 60% of the budget)', () => {
+    // Perilla oil has no sodium (olive oil has 7 mg/100 g, which would lower the budget by ~0.6 mg).
+    const withOil = meal(only('cod', 'cabbage', 'perilla-oil'));
+    const without = meal(only('cod', 'cabbage'));
+    const salty = (r: typeof withOil) =>
+      r.combos.map((c) =>
+        c.seasonings.picks.map((p) => [p.seasoning.id, p.units]),
+      );
+    expect(withOil.combos[0].oils.length).toBe(1);
+    expect(salty(withOil)).toEqual(salty(without));
+    for (const c of withOil.combos) {
+      expect(c.seasonings.picks.length).toBeLessThanOrEqual(1);
+      expect(c.seasonings.budget).toBeCloseTo(
+        without.combos[0].seasonings.budget,
+        9,
+      );
+    }
+  });
+
+  it('a favorite oil counts toward the favorite bonus', () => {
+    const okSel = only('cod', 'cabbage', 'olive-oil');
+    const favSel = {
+      ...okSel,
+      foods: { ...okSel.foods, 'olive-oil': 'favorite' as const },
+    };
+    const ok = meal(okSel).combos[0];
+    const fav = meal(favSel).combos[0];
+    expect(fav.oils[0].food.id).toBe('olive-oil');
+    expect(fav.score.total).toBeLessThan(ok.score.total);
   });
 
   it('runs one meal with everything selected in under a second', () => {

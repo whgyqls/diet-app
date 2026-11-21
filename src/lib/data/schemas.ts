@@ -60,10 +60,8 @@ const seasoningSchema = z.strictObject({
     kcal: nonNeg,
     carbs: nonNeg,
     sodium: nonNeg,
-    satFat: nonNeg.optional(),
   }),
   free: z.boolean().optional(),
-  oil: z.boolean().optional(),
   maxUnitsPerMeal: z.number().int().positive(),
 });
 

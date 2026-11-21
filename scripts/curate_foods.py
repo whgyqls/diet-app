@@ -156,6 +156,12 @@ for fid, code in [('almond', 'R105-020000058-0000'), ('walnut', 'R105-035000002-
     SPEC[fid] = dict(codes=R(code))
 SPEC['chia']['micro_zero'] = {'vitaminD': '원자료 빈칸, 식물성 씨앗이라 0으로 처리'}
 
+# Cold-pressed oils (moved from seasonings to fat foods, Phase 3): 원재료성 유지류 entries.
+SPEC['olive-oil'] = dict(codes=R('R114-017000000-0000'),
+                         method="단일 항목 '올리브유' (원자료가 엑스트라버진을 따로 구분하지 않음)")
+SPEC['perilla-oil'] = dict(codes=R('R114-003000000-0000'))
+SPEC['sesame-oil'] = dict(codes=R('R114-020000000-0000'))
+
 NOTES = {
     'mackerel': '오메가3 지방산이 많은 등푸른 생선',
     'salmon': '오메가3 지방산이 많은 생선',

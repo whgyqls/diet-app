@@ -22,16 +22,11 @@ const mk = (
 const A = mk('a', 100, 2);
 const B = mk('b', 150, 1);
 const FREE = mk('free', 0, 3, { free: true });
-const OIL = mk('oil', 0, 2, {
-  oil: true,
-  perUnit: { kcal: 40, carbs: 0, sodium: 0 },
-});
-const ALL = [A, B, FREE, OIL];
+const ALL = [A, B, FREE];
 const allOk: Selection['seasonings'] = {
   a: 'ok',
   b: 'ok',
   free: 'ok',
-  oil: 'ok',
 };
 const t = (sodiumMax: number) => ({ ...LUNCH, sodiumMax });
 const summary = (r: ReturnType<typeof recommendSeasonings>) =>
@@ -60,11 +55,9 @@ describe('recommendSeasonings', () => {
     expect(summary(recommendSeasonings(0, t(260), ALL, fav))).toEqual(['ax1']);
   });
 
-  it('never suggests oils or free seasonings as salty picks, and lists selected free ones', () => {
+  it('never suggests free seasonings as salty picks, and lists selected free ones', () => {
     const r = recommendSeasonings(0, t(1000), ALL, allOk);
-    expect(r.picks.every((p) => !p.seasoning.free && !p.seasoning.oil)).toBe(
-      true,
-    );
+    expect(r.picks.every((p) => !p.seasoning.free)).toBe(true);
     expect(r.free.map((s) => s.id)).toEqual(['free']);
   });
 
@@ -93,7 +86,7 @@ describe('recommendSeasonings', () => {
   });
 
   it('reports NO_SALTY_SELECTED when the user picked no salty seasoning', () => {
-    const r = recommendSeasonings(0, t(700), ALL, { free: 'ok', oil: 'ok' });
+    const r = recommendSeasonings(0, t(700), ALL, { free: 'ok' });
     expect(r.picks).toEqual([]);
     expect(r.reason).toBe('NO_SALTY_SELECTED');
     expect(recommendSeasonings(0, t(700), ALL, {}).free).toEqual([]);

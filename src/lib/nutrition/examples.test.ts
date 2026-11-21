@@ -54,11 +54,14 @@ function itemsText(c: MealCombo): string {
     .join(' + ');
 }
 
-const useText = (u: MealCombo['oils'][number]) =>
+const useText = (u: MealCombo['seasonings']['picks'][number]) =>
   `${u.seasoning.name} ${u.units}${u.seasoning.unit.label}`;
 
+const oilUseText = ({ food, grams }: MealCombo['oils'][number]) =>
+  `${food.name} ${grams}g${food.unit ? `(${r1(grams / food.unit.grams)}${food.unit.label})` : ''}`;
+
 function oilText(c: MealCombo): string {
-  return c.oils.map(useText).join(', ') || '—';
+  return c.oils.map(oilUseText).join(', ') || '—';
 }
 
 /** Free (no-sodium) seasonings first, then the one salty seasoning. */
@@ -303,7 +306,9 @@ function renderStyleExamples(): string {
     out.push(`**${e.label} · ${e.styleLabel}**`);
     for (const m of plan.meals) {
       const c = m.combos[0];
-      const oil = c.oils.length ? ` · ${c.oils.map(useText).join(', ')}` : '';
+      const oil = c.oils.length
+        ? ` · ${c.oils.map(oilUseText).join(', ')}`
+        : '';
       out.push(
         `- ${MEAL_LABEL[m.mealType]}: ${c.items.map((i) => `${i.food.name} ${i.grams}g`).join(' + ')}${oil}`,
       );
