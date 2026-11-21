@@ -1,0 +1,11 @@
+.next
+node_modules
+data/
+PLAN.md
+CLAUDE.md
+PROMPTS.md
+AGENTS.md
+README.md
+package-lock.json
+playwright-report
+test-results
