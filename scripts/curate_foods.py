@@ -35,9 +35,11 @@ def load(fn):
 
 DB = {RAWF: load(RAWF), INTF: load(INTF)}
 
-MACRO = OrderedDict(kcal='에너지(kcal)', protein='단백질(g)', carbs='탄수화물(g)', fiber='식이섬유(g)', fat='지방(g)', sodium='나트륨(mg)')
-MICRO = OrderedDict(potassium='칼륨(mg)', calcium='칼슘(mg)', iron='철(mg)', vitaminA='비타민 A(μg RAE)', vitaminC='비타민 C(mg)')
-DECIMALS = dict(kcal=0, protein=1, carbs=1, fiber=1, fat=1, sodium=0, potassium=0, calcium=0, iron=1, vitaminA=0, vitaminC=1)
+MACRO = OrderedDict(kcal='에너지(kcal)', protein='단백질(g)', carbs='탄수화물(g)', fiber='식이섬유(g)', fat='지방(g)',
+                    satFat='포화지방산(g)', sodium='나트륨(mg)', cholesterol='콜레스테롤(mg)')
+MICRO = OrderedDict(potassium='칼륨(mg)', calcium='칼슘(mg)', iron='철(mg)', vitaminA='비타민 A(μg RAE)', vitaminC='비타민 C(mg)',
+                    vitaminD='비타민 D(μg)')
+DECIMALS = dict(kcal=0, protein=1, carbs=1, fiber=1, fat=1, satFat=1, sodium=0, cholesterol=0, vitaminD=1, potassium=0, calcium=0, iron=1, vitaminA=0, vitaminC=1)
 
 
 def rnd(k, v):
@@ -83,23 +85,30 @@ SPEC = {
     'beef-shank': dict(codes=R('R209-027068501-0000', 'R209-027088501-0000'), animal=True, method='한우 1등급·2등급 평균'),
     'beef-tenderloin': dict(codes=R('R209-027068701-0000', 'R209-027088701-0000'), animal=True, method='한우 1등급·2등급 평균'),
     'mackerel': dict(codes=R('R211-021014001-0441', 'R211-021014001-1208'), animal=True,
-                     fill={'sodium': R('R211-021014001-0438', 'R211-021014001-0010')},
+                     micro_usda={'vitaminD': (9.1, 'FDC 173672', 'Fish, mackerel, Pacific and jack, mixed species, raw')},
+                     fill={'sodium': R('R211-021014001-0438', 'R211-021014001-0010'),
+                           'cholesterol': R('R211-021014001-0010')},
+                     sat_ratio_from=R('R211-021014001-0010'),
                      method="'대표_평균' 없음 → 국내 '고등어_육_생것_*_평균' 2개(제주·부산) 평균, 수입 제외"),
     'salmon': dict(codes=R('R211-201094001-7014', 'R211-201094001-5350', 'R211-201094001-5311'), animal=True,
                    method="'대표_평균' 없음 → '연어_육_생것_수입(영국/뉴질랜드/노르웨이)_평균' 3개 평균"),
     'shrimp': dict(codes=R('R211-717414001-0000', 'R211-717134001-0402'), animal=True,
+                   fill={'cholesterol': R('R211-717417401-0000')},
                    method='일반 품종 2개(흰다리새우 대표_평균, 대하 인천_평균) 평균'),
-    'squid': dict(codes=R('R211-667114001-0000'), animal=True),
+    'squid': dict(codes=R('R211-667114001-0000'), animal=True, fill={'cholesterol': R('R211-667094801-1201')}),
     'tuna': dict(codes=R('R211-059094001-7079'), animal=True, method="'대표_평균' 없음 → '수입_평균' 사용"),
-    'cod': dict(codes=R('R211-065034001-5519'), animal=True, method="'대표_평균' 없음 → 유일한 '평균' 항목(수입_평균) 사용"),
+    'cod': dict(codes=R('R211-065034001-5519'), animal=True, method="'대표_평균' 없음 → 유일한 '평균' 항목(수입_평균) 사용",
+                micro_fill={'vitaminD': R('R211-065032801-0000', 'R211-065031601-0000')}),
     'pollack': dict(codes=R('R211-107034001-5519', 'R211-107034001-1273'), animal=True,
+                    micro_usda={'vitaminD': (0.0, 'FDC 2768188', 'Alaska Pollock, raw (Foundation)')},
                     method="'대표_평균' 없음 → '평균' 항목 2개(수입·강릉) 평균"),
-    'spanish-mackerel': dict(codes=R('R211-171014001-0000'), animal=True),
-    'flatfish': dict(codes=R('R211-043014001-0000'), animal=True),
+    'spanish-mackerel': dict(codes=R('R211-171014001-0000'), animal=True, fill={'cholesterol': R('R211-171014001-0757')}),
+    'flatfish': dict(codes=R('R211-043014001-0000'), animal=True, fill={'cholesterol': R('R211-043011601-1040')}),
     'egg': dict(codes=R('R210-003000001-0000'), animal=True),
     'tofu': dict(codes=I('P106-001000100-0205', 'P106-001000100-0039', 'P106-001000100-0545', 'P106-001000100-0902', 'P106-001000100-0870'),
                  method="통합 파일 일반 '국산콩 두부' 5개 제품 평균(순두부·연두부·양념 제품 제외)"),
-    'greek-yogurt': dict(codes=I('P119-202040200-1783', 'P119-202040200-0574', 'P119-202040200-1354', 'P119-202040200-1355', 'P119-202040200-1511'),
+    'greek-yogurt': dict(micro_fill={'vitaminD': I('P119-202040200-1573')},
+                         codes=I('P119-202040200-1783', 'P119-202040200-0574', 'P119-202040200-1354', 'P119-202040200-1355', 'P119-202040200-1511'),
                          animal=True,
                          method="통합 파일의 무가당·플레인 그릭요거트 중 단백질 9g 이상(꾸덕한 정통 제품) 5개 평균, 락토프리·두유 제품 제외"),
     'black-soybean': dict(codes=R('R104-012050046-0000')),
@@ -138,6 +147,14 @@ for fid, code in [('bok-choy', 'R106-175000001-0000'), ('napa-cabbage', 'R106-08
                   ('enoki', 'R107-025000001-0000'), ('mung-bean-sprouts', 'R106-112000001-0000'), ('bracken', 'R106-016000047-0000')]:
     SPEC[fid] = dict(codes=R(code))
 
+# Fat sources (Phase 2, approved): unsalted, unseasoned entries only — 생것, 말린것 (= unroasted raw nut) or 볶은것.
+for fid, code in [('almond', 'R105-020000058-0000'), ('walnut', 'R105-035000002-0000'), ('pine-nut', 'R105-023000001-0000'),
+                  ('pistachio', 'R105-032000058-0000'), ('pecan', 'R105-033000002-0000'), ('peanut', 'R105-007000058-0000'),
+                  ('pumpkin-seed', 'R105-036000002-0000'), ('sunflower-seed', 'R105-034000058-0000'),
+                  ('perilla-seed', 'R105-005000058-0000'), ('sesame', 'R105-026020058-0000'), ('flaxseed', 'R105-037000058-0000'),
+                  ('chia', 'R105-038000002-0000'), ('avocado', 'R108-064000001-0000')]:
+    SPEC[fid] = dict(codes=R(code))
+
 NOTES = {
     'mackerel': '오메가3 지방산이 많은 등푸른 생선',
     'salmon': '오메가3 지방산이 많은 생선',
@@ -153,6 +170,10 @@ NOTES = {
     'spinach': '수산(옥살산)이 있어 데쳐 먹는 경우가 많음',
     'perilla-leaf': '향이 강해 쌈이나 향채로 쓰기 좋음',
     'duck': '훈제오리는 나트륨이 많아 생오리 기준',
+    'walnut': '오메가3 지방산(알파리놀렌산)이 들어 있는 견과',
+    'peanut': '견과처럼 먹지만 콩과 식물, 알레르기가 흔한 편',
+    'flaxseed': '통째로는 소화가 잘 안 돼 갈아서 먹는 경우가 많음',
+    'chia': '물에 불리면 젤처럼 부풀어 오름',
 }
 
 
@@ -174,10 +195,11 @@ def items_of(codes):
 
 def build_usda_thigh():
     # USDA FDC 173627 (SR Legacy NDB 05096), fetched 2026-11-21. carbs/fiber/vitamin C are USDA "assumed zero".
-    per = dict(kcal=121, protein=19.7, carbs=0, fiber=0, fat=4.12, sodium=95)
-    micro = dict(potassium=242, calcium=7, iron=0.81, vitaminA=7)
+    # Saturated fat (606) = 1.097 g, cholesterol (601) = 94 mg, vitamin D (328) = 0 μg, fetched 2026-11-21 from the FDC API.
+    per = dict(kcal=121, protein=19.7, carbs=0, fiber=0, fat=4.12, satFat=1.097, sodium=95, cholesterol=94)
+    micro = dict(potassium=242, calcium=7, iron=0.81, vitaminA=7, vitaminD=0)
     src = dict(items=[dict(file=USDA, code='FDC 173627 (SR Legacy NDB 05096)', name='Chicken, broilers or fryers, dark meat, thigh, meat only, raw')],
-               method='국내 원자료에 껍질 제거 닭다리살 없음 → USDA SR Legacy 값(탄수·식이섬유·비타민C는 USDA 가정값 0, 비타민C는 비워둠)')
+               method='국내 원자료에 껍질 제거 닭다리살 없음 → USDA SR Legacy 값(탄수·식이섬유·비타민C는 USDA 가정값 0, 비타민C는 비워둠, 포화지방 1.097g·콜레스테롤 94mg·비타민D 0은 USDA 값)')
     return per, micro, src, []
 
 
@@ -219,17 +241,40 @@ def build(fid, spec):
     per, partial = avg_fields(codes, MACRO)
     micro, _ = avg_fields(codes, MICRO)
     extra_items = []
+    # Micronutrient blanks: from other entries of the same food, else from USDA FoodData Central (flag 보충).
+    usda_items = []
+    for k, fill_codes in spec.get('micro_fill', {}).items():
+        if micro[k] is None:
+            micro[k] = avg_fields(fill_codes, {k: MICRO[k]})[0][k]
+            extra_items += fill_codes
+            flags.append('보충')
+            notes.append(f'{k}는 같은 식품의 다른 항목({len(fill_codes)}개)에서 보충')
+    for k, (value, fdc, desc) in spec.get('micro_usda', {}).items():
+        if micro[k] is None:
+            micro[k] = value
+            usda_items.append(dict(file=USDA, code=fdc, name=desc))
+            flags.append('보충')
+            notes.append(f'{k}는 원자료에 없어 USDA {fdc} 값 {value}으로 보충')
     for k, fill_codes in spec.get('fill', {}).items():
         if per[k] is None:
             per[k] = avg_fields(fill_codes, {k: MACRO[k]})[0][k]
             extra_items += fill_codes
             flags.append('보충')
             notes.append(f'{k}는 같은 식품의 다른 항목({len(fill_codes)}개)에서 보충')
+    ratio_codes = spec.get('sat_ratio_from')
+    if per['satFat'] is None and ratio_codes:
+        r = avg_fields(ratio_codes, dict(fat=MACRO['fat'], satFat=MACRO['satFat']))[0]
+        per['satFat'] = per['fat'] * r['satFat'] / r['fat']
+        extra_items += ratio_codes
+        flags.append('추정')
+        notes.append(f"포화지방은 빈칸 → 같은 식품 다른 항목의 포화지방/지방 비율 {r['satFat'] / r['fat']:.3f} × 지방")
     for k in MACRO:
         if per[k] is None:
             if k in ('fiber', 'carbs') and spec.get('animal'):
                 per[k] = 0.0
                 notes.append(f'{k} 빈칸=0(동물성)')
+            elif k == 'cholesterol' and not spec.get('animal'):
+                per[k] = 0.0  # plants contain no cholesterol
             else:
                 raise SystemExit(f'{fid}: blank {k} needs a fill entry')
     for k in partial:
@@ -241,7 +286,8 @@ def build(fid, spec):
     method = spec.get('method') or ('단일 항목' if len(codes) == 1 else f'{len(codes)}개 항목 평균')
     if notes:
         method += ' / ' + ', '.join(notes)
-    return per, micro, dict(items=items_of(codes + extra_items), method=method), flags
+    items = items_of(list(dict.fromkeys(codes + extra_items))) + usda_items
+    return per, micro, dict(items=items, method=method), flags
 
 
 def format_json(data):
@@ -268,7 +314,7 @@ def main():
         new_per = {k: rnd(k, per[k]) for k in MACRO}
         new_micro = {k: rnd(k, v) for k, v in micro.items() if v is not None}
         if f['per100g'] != new_per:
-            changed = ' '.join(f'{k}:{f["per100g"][k]}→{new_per[k]}' for k in MACRO if f['per100g'][k] != new_per[k])
+            changed = ' '.join(f'{k}:{f["per100g"].get(k)}→{new_per[k]}' for k in MACRO if f['per100g'].get(k) != new_per[k])
             print(f'{fid} ({f["name"]}): {changed}')
         nf = OrderedDict((key, f[key]) for key in ('id', 'name', 'category', 'group', 'basis'))
         nf['per100g'] = new_per

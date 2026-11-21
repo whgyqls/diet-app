@@ -15,7 +15,7 @@ const sourceItemSchema = z.strictObject({
 const foodSchema = z.strictObject({
   id: z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/),
   name: z.string().min(1),
-  category: z.enum(['protein', 'carb', 'fiber']),
+  category: z.enum(['protein', 'carb', 'fiber', 'fat']),
   group: z.string().min(1),
   basis: z.enum(['raw', 'cooked']),
   per100g: z.strictObject({
@@ -24,7 +24,9 @@ const foodSchema = z.strictObject({
     carbs: nonNeg,
     fiber: nonNeg,
     fat: nonNeg,
+    satFat: nonNeg,
     sodium: nonNeg,
+    cholesterol: nonNeg,
   }),
   micro100g: z
     .strictObject({
@@ -33,6 +35,7 @@ const foodSchema = z.strictObject({
       iron: nonNeg.optional(),
       vitaminA: nonNeg.optional(),
       vitaminC: nonNeg.optional(),
+      vitaminD: nonNeg.optional(),
     })
     .optional(),
   note: z.string().min(1).optional(),
@@ -53,8 +56,14 @@ const seasoningSchema = z.strictObject({
   id: z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/),
   name: z.string().min(1),
   unit: servingUnitSchema,
-  perUnit: z.strictObject({ kcal: nonNeg, carbs: nonNeg, sodium: nonNeg }),
+  perUnit: z.strictObject({
+    kcal: nonNeg,
+    carbs: nonNeg,
+    sodium: nonNeg,
+    satFat: nonNeg.optional(),
+  }),
   free: z.boolean().optional(),
+  oil: z.boolean().optional(),
   maxUnitsPerMeal: z.number().int().positive(),
 });
 

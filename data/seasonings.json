@@ -1,5 +1,5 @@
 {
-  "_note": "초안 근사치. 1작은술 ≈ 5g, 1큰술 ≈ 15g. Phase 1에서 확정.",
+  "_note": "초안 근사치. 1작은술 ≈ 5g, 1큰술 ≈ 15g. Phase 1에서 확정. 기름 satFat = 4.5g × 원재료성 포화지방산(올리브유 15.73, 들기름 8.81, 참기름 14.89 g/100g).",
   "version": "0.1.0",
   "seasonings": [
     { "id": "salt", "name": "소금", "unit": { "label": "꼬집(0.5g)", "grams": 0.5 },
@@ -16,12 +16,12 @@
       "perUnit": { "kcal": 10, "carbs": 1.5, "sodium": 140 }, "maxUnitsPerMeal": 1 },
     { "id": "mustard", "name": "머스터드", "unit": { "label": "작은술", "grams": 5 },
       "perUnit": { "kcal": 3, "carbs": 0.3, "sodium": 60 }, "maxUnitsPerMeal": 2 },
-    { "id": "olive-oil", "name": "올리브유", "unit": { "label": "작은술", "grams": 4.5 },
-      "perUnit": { "kcal": 40, "carbs": 0, "sodium": 0 }, "maxUnitsPerMeal": 2 },
+    { "id": "olive-oil", "name": "엑스트라버진 올리브유", "unit": { "label": "작은술", "grams": 4.5 },
+      "perUnit": { "kcal": 40, "carbs": 0, "sodium": 0, "satFat": 0.71 }, "oil": true, "maxUnitsPerMeal": 2 },
     { "id": "perilla-oil", "name": "들기름", "unit": { "label": "작은술", "grams": 4.5 },
-      "perUnit": { "kcal": 40, "carbs": 0, "sodium": 0 }, "maxUnitsPerMeal": 2 },
+      "perUnit": { "kcal": 40, "carbs": 0, "sodium": 0, "satFat": 0.4 }, "oil": true, "maxUnitsPerMeal": 2 },
     { "id": "sesame-oil", "name": "참기름", "unit": { "label": "작은술", "grams": 4.5 },
-      "perUnit": { "kcal": 40, "carbs": 0, "sodium": 0 }, "maxUnitsPerMeal": 1 },
+      "perUnit": { "kcal": 40, "carbs": 0, "sodium": 0, "satFat": 0.67 }, "oil": true, "maxUnitsPerMeal": 1 },
     { "id": "pepper", "name": "후추", "unit": { "label": "약간", "grams": 0.3 },
       "perUnit": { "kcal": 1, "carbs": 0.2, "sodium": 0 }, "free": true, "maxUnitsPerMeal": 3 },
     { "id": "garlic", "name": "다진 마늘", "unit": { "label": "작은술", "grams": 5 },
