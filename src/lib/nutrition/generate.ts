@@ -12,12 +12,10 @@ import type {
   MealType,
   MicroKey,
   NutrientTotals,
-  PortionedFood,
   Profile,
   RecommendationConditions,
   Selection,
   TargetOverrides,
-  UnmetTarget,
 } from '@/types/nutrition';
 import {
   CARB_TOLERANCE_G,
@@ -41,7 +39,6 @@ import {
   type ProteinGroup,
   SAT_FAT_KCAL_RATIO_MAX,
   SCORE_WEIGHTS,
-  UNMET_TARGET_TOLERANCE,
 } from './constants';
 import {
   ZERO_TOTALS,
@@ -49,11 +46,13 @@ import {
   calcPortions,
   seasoningNutrients,
 } from './portions';
-import { computeFlags } from './flags';
+import { microsOf, summarizeDay } from './day';
 import { carbCapGrams, scoreCombo } from './scoring';
 import { seasoningPlanner } from './seasoning';
 import { resolveStyles } from './styles';
 import { calcDayTargets, calcMealTargets } from './targets';
+
+export { microsOf };
 
 export function comboKey(c: ComboFoods): string {
   return [c.protein, c.carb, ...c.fibers, c.fat]
@@ -139,18 +138,6 @@ export function buildMealCombo(
       t.rules.preferNoCarb && !combo.carb ? LOW_CARB_NO_CARB_BONUS : 0,
     ),
   };
-}
-
-/** Micronutrients of the portioned foods. Missing source values count as 0 (an underestimate). */
-export function microsOf(items: PortionedFood[]): Record<MicroKey, number> {
-  const out = Object.fromEntries(MICRO_KEYS.map((k) => [k, 0])) as Record<
-    MicroKey,
-    number
-  >;
-  for (const { food, grams } of items)
-    for (const k of MICRO_KEYS)
-      out[k] += ((food.micro100g?.[k] ?? 0) * grams) / 100;
-  return out;
 }
 
 /**
@@ -549,7 +536,8 @@ function dayOptions(
   return { top, options };
 }
 
-export function generateDayPlan(req: DayRequest): DayPlan {
+/** Targets, setting flags, per-meal targets and effective includeFoods of a day request. */
+export function daySetup(req: DayRequest) {
   const cond = req.conditions ?? {};
   const styles = resolveStyles(cond.styles ?? [], req.profile.goal);
   const { targets, flags: settingFlags } = calcDayTargets(
@@ -568,6 +556,12 @@ export function generateDayPlan(req: DayRequest): DayPlan {
   const includeFoods = (cond.includeFoods ?? []).filter(
     (id) => !excluded.has(id),
   );
+  return { targets, settingFlags, mealTargets, includeFoods };
+}
+
+export function generateDayPlan(req: DayRequest): DayPlan {
+  const cond = req.conditions ?? {};
+  const { targets, settingFlags, mealTargets, includeFoods } = daySetup(req);
   let reason: GenerateFailReason | undefined;
 
   const generated = mealTargets.map((t) => {
@@ -604,58 +598,16 @@ export function generateDayPlan(req: DayRequest): DayPlan {
       );
     });
   }
-  const planned = meals.every((m) => m.combos.length > 0);
-
-  const totals: NutrientTotals = meals.reduce(
-    (a, m) => (m.combos[0] ? addTotals(a, m.combos[0].totals) : a),
-    ZERO_TOTALS,
-  );
-  const micros = microsOf(
-    meals.flatMap((m) =>
-      m.combos[0] ? [...m.combos[0].items, ...m.combos[0].oils] : [],
-    ),
-  );
-  // Warnings are computed once from the final values (flags.ts); with no plan only the setting ones.
-  const flagDetails = computeFlags({
+  return summarizeDay({
+    targets,
     profile: req.profile,
-    targets,
     settingFlags,
-    ...(planned ? { intake: { totals, micros } } : {}),
+    meals: meals.map((m) => ({
+      mealType: m.mealType,
+      targets: m.targets,
+      combos: m.combos,
+    })),
+    includeFoods,
+    reason,
   });
-  const shortfalls = MICRO_KEYS.filter(
-    (k) => micros[k] < targets.micros[k] * MICRO_SHORTFALL_RATIO,
-  ).map((k) => ({
-    nutrient: k,
-    amount: micros[k],
-    reference: targets.micros[k],
-    ratio: micros[k] / targets.micros[k],
-    hardFromFood: MICROS_HARD_FROM_FOOD.includes(k),
-  }));
-  const unmet = (
-    nutrient: UnmetTarget['nutrient'],
-    target: number,
-    actual: number,
-  ): UnmetTarget[] =>
-    planned && actual < target * UNMET_TARGET_TOLERANCE
-      ? [{ nutrient, target, actual, short: target - actual }]
-      : [];
-  const dayFoods = meals.flatMap((m) =>
-    m.combos[0] ? m.combos[0].items.map((i) => i.food.id) : [],
-  );
-  return {
-    targets,
-    meals,
-    totals,
-    micros,
-    shortfalls,
-    flags: flagDetails.map((f) => f.code),
-    flagDetails,
-    unmetTargets: [
-      ...unmet('protein', targets.protein.base, totals.protein),
-      ...unmet('fiber', targets.fiberMin, totals.fiber),
-      ...unmet('kcal', targets.kcal, totals.kcal),
-    ],
-    missingIncludes: includeFoods.filter((id) => !dayFoods.includes(id)),
-    ...(reason ? { reason } : {}),
-  };
 }

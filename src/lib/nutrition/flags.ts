@@ -88,7 +88,7 @@ export const HEALTH_FLAGS: readonly HealthFlagCode[] = [
   'MICRO_SHORTFALL',
 ];
 
-const MICRO_LABELS_KO: Record<MicroKey, string> = {
+export const MICRO_LABELS_KO: Record<MicroKey, string> = {
   calcium: '칼슘',
   iron: '철',
   potassium: '칼륨',

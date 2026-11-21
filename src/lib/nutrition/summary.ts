@@ -1,5 +1,5 @@
 // Display values of the day targets (PLAN.md 3.1). Pure: screens only format these numbers.
-import type { DayTargets } from '@/types/nutrition';
+import type { DayPlan, DayTargets } from '@/types/nutrition';
 
 export type DaySummary = {
   kcal: number;
@@ -22,4 +22,45 @@ export function daySummary(t: DayTargets): DaySummary {
     fiberMin: Math.round(t.fiberMin),
     sodiumMax: Math.round(t.sodiumMax),
   };
+}
+
+export type DayBar = {
+  key: 'kcal' | 'protein' | 'carbs' | 'fat' | 'fiber' | 'sodium';
+  actual: number; // rounded for display
+  target: number; // rounded for display
+  unit: 'kcal' | 'g' | 'mg';
+  /** reach = aim for the target, limit = stay under it. */
+  kind: 'reach' | 'limit';
+  /** actual / target (unrounded actual); the screen clamps the bar width. */
+  ratio: number;
+  /** A limit that is exceeded. Reach targets are never "over". */
+  over: boolean;
+};
+
+/** Day total vs target for the bars at the top of the plan screen (PLAN.md 3.3). */
+export function dayBars(plan: Pick<DayPlan, 'targets' | 'totals'>): DayBar[] {
+  const { targets: t, totals: a } = plan;
+  const bar = (
+    key: DayBar['key'],
+    actual: number,
+    target: number,
+    unit: DayBar['unit'],
+    kind: DayBar['kind'],
+  ): DayBar => ({
+    key,
+    actual: Math.round(actual),
+    target: Math.round(target),
+    unit,
+    kind,
+    ratio: target > 0 ? actual / target : 0,
+    over: kind === 'limit' && Math.round(actual) > Math.round(target),
+  });
+  return [
+    bar('kcal', a.kcal, t.kcal, 'kcal', 'reach'),
+    bar('protein', a.protein, t.protein.base, 'g', 'reach'),
+    bar('carbs', a.carbs, t.totalCarbMax, 'g', 'limit'),
+    bar('fat', a.fat, t.fat.stage2, 'g', 'limit'),
+    bar('fiber', a.fiber, t.fiberMin, 'g', 'reach'),
+    bar('sodium', a.sodium, t.sodiumMax, 'mg', 'limit'),
+  ];
 }
