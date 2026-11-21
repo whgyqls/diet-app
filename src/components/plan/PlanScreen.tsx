@@ -1,14 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import {
-  useEffect,
-  useMemo,
-  useReducer,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { FOODS } from '@/lib/data/load';
 import { isFoodExcludedByStyles } from '@/lib/nutrition/styleExclusion';
 import {
@@ -16,18 +9,14 @@ import {
   planReducer,
   rerollRequestOf,
 } from '@/lib/plan/planState';
-import {
-  comboSignature,
-  savedStore,
-  snapshotOf,
-  type SavedCombo,
-} from '@/lib/plan/savedCombos';
+import { comboSignature, savedStore, snapshotOf } from '@/lib/plan/savedCombos';
 import { parseProfile } from '@/lib/profile';
 import {
   requestFingerprint,
   type PlanInputs,
 } from '@/lib/plan/requestFingerprint';
 import { usePlanWorker } from '@/lib/plan/usePlanWorker';
+import { useSavedCombos } from '@/lib/plan/useSavedCombos';
 import { selectionProblems } from '@/lib/selection/selection';
 import { useAppStore } from '@/lib/store/appStore';
 import { useHydrated } from '@/lib/store/useHydrated';
@@ -43,7 +32,6 @@ import { FlagList } from './FlagList';
 import { RepeatNotice } from './RepeatNotice';
 import { SwapSheet } from './SwapSheet';
 
-const NO_SAVED: SavedCombo[] = [];
 /** Short unique id (crypto.randomUUID is missing on plain-http LAN addresses). */
 const newId = () =>
   `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
@@ -146,11 +134,7 @@ function Plan() {
     onMealError: (meal) =>
       dispatch({ type: 'rerollFailed', meal, error: true }),
   });
-  const saved = useSyncExternalStore(
-    savedStore.subscribe,
-    savedStore.list,
-    () => NO_SAVED,
-  );
+  const { list: saved } = useSavedCombos();
   const [swap, setSwap] = useState<{
     meal: MealType;
     cardId: string;
@@ -397,6 +381,13 @@ function Plan() {
           className="inline-flex min-h-11 items-center underline"
         >
           재료 다시 고르기
+        </Link>
+        <br />
+        <Link
+          href="/saved"
+          className="inline-flex min-h-11 items-center underline"
+        >
+          저장한 조합 보기
         </Link>
         <p className="text-xs text-neutral-600 dark:text-neutral-400">
           {DISCLAIMER}
