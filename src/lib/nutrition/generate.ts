@@ -248,7 +248,12 @@ function similarity(c: MealCombo, picked: MealCombo[]): number {
 }
 
 /** MMR over best-first `candidates`: greedily take the combo with the best score + similarity penalty against those already taken. */
-export function pickDiverse(candidates: MealCombo[], n: number): MealCombo[] {
+export function pickDiverse(
+  candidates: MealCombo[],
+  n: number,
+  /** Extra cost per candidate (e.g. day context); default none. */
+  extra: (c: MealCombo) => number = () => 0,
+): MealCombo[] {
   // candidates come sorted best-first; only the head can realistically win.
   const pool = candidates.slice(0, MMR_POOL_SIZE);
   const picked: MealCombo[] = [];
@@ -256,7 +261,7 @@ export function pickDiverse(candidates: MealCombo[], n: number): MealCombo[] {
     let best = 0;
     let bestVal = Infinity;
     pool.forEach((c, i) => {
-      const v = c.score.total + similarity(c, picked);
+      const v = c.score.total + extra(c) + similarity(c, picked);
       if (v < bestVal) {
         bestVal = v;
         best = i;
@@ -304,7 +309,7 @@ export function generateMealCombos(req: MealRequest): {
 }
 
 /** Every buildable combo for one meal, best score first. */
-function mealCandidates(req: MealRequest): {
+export function mealCandidates(req: MealRequest): {
   candidates: MealCombo[];
   reason?: GenerateFailReason;
 } {

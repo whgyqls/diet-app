@@ -12,6 +12,8 @@ import {
   SEASONING_REASON_TEXT,
   UNMET_LABELS,
 } from '@/lib/ui-labels';
+import type { LockSlot } from '@/lib/plan/planState';
+import type { SwapSlot } from '@/lib/nutrition/swap';
 import type { MealCombo } from '@/types/nutrition';
 
 const r0 = (n: number) => Math.round(n);
@@ -24,12 +26,27 @@ export function ComboCard({
   total,
   picked,
   onPick,
+  lockedIds,
+  onToggleLock,
+  onSwap,
+  compared,
+  onToggleCompare,
+  saved,
+  onToggleSave,
 }: {
   combo: MealCombo;
   index: number;
   total: number;
   picked: boolean;
   onPick: () => void;
+  /** Food ids locked for this meal. */
+  lockedIds: string[];
+  onToggleLock: (slot: LockSlot, foodId: string) => void;
+  onSwap: (slot: SwapSlot['category'], foodId: string) => void;
+  compared: boolean;
+  onToggleCompare: () => void;
+  saved: boolean;
+  onToggleSave: () => void;
 }) {
   const group = comboProteinGroup(combo);
   const contributions = badgeContributions(combo.items);
@@ -39,7 +56,7 @@ export function ComboCard({
       aria-label={`조합 ${index + 1} / ${total}`}
       className={`flex h-full flex-col rounded-2xl border p-4 ${picked ? 'border-emerald-600 ring-2 ring-emerald-600' : 'border-neutral-300 dark:border-neutral-600'}`}
     >
-      <header className="mb-2 flex items-center justify-between text-sm">
+      <header className="mb-2 flex items-center justify-between gap-2 text-sm">
         <span className="font-semibold">
           조합 {index + 1} / {total}
         </span>
@@ -48,6 +65,26 @@ export function ComboCard({
             {PROTEIN_GROUP_LABELS[group]}
           </span>
         )}
+        <span className="ml-auto flex">
+          <button
+            type="button"
+            aria-pressed={compared}
+            aria-label={`조합 ${index + 1} 비교에 담기`}
+            onClick={onToggleCompare}
+            className={`min-h-11 min-w-11 rounded-lg px-2 text-sm ${compared ? 'bg-emerald-100 font-semibold text-emerald-900 dark:bg-emerald-900 dark:text-emerald-100' : ''}`}
+          >
+            비교
+          </button>
+          <button
+            type="button"
+            aria-pressed={saved}
+            aria-label={`조합 ${index + 1} 저장`}
+            onClick={onToggleSave}
+            className="min-h-11 min-w-11 rounded-lg text-xl"
+          >
+            {saved ? '★' : '☆'}
+          </button>
+        </span>
       </header>
 
       <ul className="space-y-2">
@@ -65,6 +102,25 @@ export function ComboCard({
             <p className="text-xs text-neutral-600 dark:text-neutral-400">
               {food.cookingHint}
             </p>
+            <div className="mt-1 flex gap-1">
+              <button
+                type="button"
+                aria-pressed={lockedIds.includes(food.id)}
+                aria-label={`${food.name} 고정`}
+                onClick={() => onToggleLock(food.category, food.id)}
+                className={`min-h-11 min-w-11 rounded-lg border text-base ${lockedIds.includes(food.id) ? 'border-emerald-600 bg-emerald-100 dark:bg-emerald-900' : 'border-neutral-300 dark:border-neutral-600'}`}
+              >
+                {lockedIds.includes(food.id) ? '🔒' : '🔓'}
+              </button>
+              <button
+                type="button"
+                aria-label={`${food.name} 바꾸기`}
+                onClick={() => onSwap(food.category, food.id)}
+                className="min-h-11 rounded-lg border border-neutral-300 px-3 text-sm dark:border-neutral-600"
+              >
+                바꾸기
+              </button>
+            </div>
             {bonusBadges(food).length > 0 && (
               <p className="mt-0.5 flex flex-wrap gap-1">
                 {bonusBadges(food).map((b) => (

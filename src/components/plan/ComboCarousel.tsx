@@ -1,18 +1,15 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import type { Card } from '@/lib/plan/planState';
-import { ComboCard } from './ComboCard';
 
 /** Horizontal swipe list (CSS scroll-snap), one combo card at a time. */
 export function ComboCarousel({
   cards,
-  pickedCardId,
-  onPick,
+  renderCard,
 }: {
   cards: Card[];
-  pickedCardId?: string;
-  onPick: (cardId: string) => void;
+  renderCard: (card: Card, index: number, total: number) => ReactNode;
 }) {
   const ref = useRef<HTMLUListElement>(null);
   const [active, setActive] = useState(0);
@@ -33,13 +30,7 @@ export function ComboCarousel({
       >
         {cards.map((c, i) => (
           <li key={c.id} className="w-[85%] max-w-sm shrink-0 snap-center">
-            <ComboCard
-              combo={c.combo}
-              index={i}
-              total={cards.length}
-              picked={c.id === pickedCardId}
-              onPick={() => onPick(c.id)}
-            />
+            {renderCard(c, i, cards.length)}
           </li>
         ))}
       </ul>

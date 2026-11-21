@@ -101,3 +101,15 @@ export const SEASONING_REASON_TEXT = {
   NO_SALTY_SELECTED: '짠 양념을 고르지 않아 권장량이 없어요',
   NO_SODIUM_BUDGET: '이 끼니는 나트륨 여유가 없어 짠 양념은 권하지 않아요',
 } as const;
+
+// ---- Plan screen: swap, lock, compare, save, notices (Phase 4b) ----
+export const NOTICE_TEXT = {
+  SLOT_FULL: '식이섬유 재료는 최대 2개까지 고정할 수 있어요',
+  TOO_MANY_FIBERS: '이 끼니는 식이섬유 재료를 더 고정할 수 없어요',
+  COMPARE_FULL: '비교는 최대 3개까지 할 수 있어요',
+  LOCK_INFEASIBLE:
+    '이 고정으로는 만들 수 있는 조합이 없어요. 직전 고정 상태로 되돌렸어요',
+  EXHAUSTED: '더 이상 새 조합이 없어요',
+  REROLL_ERROR: '다시 추천하지 못했어요. 잠시 후 다시 시도해 주세요',
+  SWAP_DUPLICATE: '이미 목록에 있는 조합이에요',
+} as const;

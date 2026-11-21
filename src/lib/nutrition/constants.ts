@@ -383,6 +383,25 @@ export const DAY_PLAN_OPTIONS_PER_MEAL = 15;
 /** MMR only looks at this many best-scoring candidates (keeps it fast). */
 export const MMR_POOL_SIZE = 2000;
 
+/**
+ * Soft penalties when one meal is rerolled and the other meals of the day are known (PLAN.md 5-6, items 2-3,
+ * moved to a single meal). Scores sit around 0-0.2, so a protein-group overlap (0.5) outweighs score gaps,
+ * a repeated food (0.1 each, like MMR_PENALTY.sameCarb) only nudges. Nothing is removed from the candidates.
+ */
+export const DAY_CONTEXT_PROTEIN_GROUP_PENALTY = 0.5;
+export const DAY_CONTEXT_REPEAT_PENALTY = 0.1;
+
+/** The same food in at least this share of a meal's cards (rounded up) triggers the "too repetitive" notice. */
+export const REPEAT_WARN_RATIO = 0.8;
+/** With fewer cards than this the notice never shows. */
+export const REPEAT_WARN_MIN_COMBOS = 3;
+/** Cancels floating point noise in ratio * n before rounding up (0.7 * 10 = 7.000000000000001). */
+export const RATIO_EPSILON = 1e-9;
+/** How many combos can be compared side by side. */
+export const COMPARE_MAX = 3;
+/** Fiber foods that can be locked in one meal. */
+export const LOCK_MAX_FIBERS = 2;
+
 export const COMBOS_PER_MEAL = 5;
 /** Vegetable sets kept per meal before combining with proteins/carbs/fats (keeps generation fast). */
 export const FIBER_SETS_PER_MEAL = 12;

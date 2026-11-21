@@ -102,3 +102,103 @@ describe('runWorkerRequest', () => {
     expect(res).toMatchObject({ ok: false, id: 3 });
   });
 });
+
+// ---- Phase 4b: meal requests ----
+import { generateMealOptions } from '@/lib/nutrition/mealOptions';
+import { resolveStyles } from '@/lib/nutrition/styles';
+import { calcDayTargets, calcMealTargets } from '@/lib/nutrition/targets';
+import { FOODS, REF_YEAR, SEASONINGS } from '@/lib/nutrition/test-fixtures';
+
+describe('runWorkerRequest: meal', () => {
+  const profile = EXAMPLE_PROFILES[1].profile;
+  const lunch = calcMealTargets(
+    calcDayTargets(
+      profile,
+      REF_YEAR,
+      undefined,
+      resolveStyles([], profile.goal),
+    ).targets,
+    3,
+  )[1];
+  const base = {
+    kind: 'meal' as const,
+    id: 11,
+    meal: 'lunch' as const,
+    targets: lunch,
+    selection: selectAll(),
+    locked: [] as string[],
+    seen: [] as string[],
+    count: 4,
+    otherPicked: [],
+  };
+
+  it('returns the same combos as the engine for the same request, tagged with id and meal', () => {
+    const res = runWorkerRequest(base);
+    if (!res.ok || res.kind !== 'meal')
+      throw new Error('expected a meal result');
+    expect(res.id).toBe(11);
+    expect(res.meal).toBe('lunch');
+    const direct = generateMealOptions({
+      foods: FOODS,
+      seasonings: SEASONINGS,
+      selection: base.selection,
+      targets: lunch,
+      count: 4,
+    });
+    expect(res.result.combos.map((c) => c.key)).toEqual(
+      direct.combos.map((c) => c.key),
+    );
+    expect(res.result.exhausted).toBe(false);
+  });
+
+  it('passes locked and seen on to the engine', () => {
+    const first = runWorkerRequest({ ...base, locked: ['cabbage'] });
+    if (!first.ok || first.kind !== 'meal')
+      throw new Error('expected a meal result');
+    for (const c of first.result.combos)
+      expect(c.items.map((i) => i.food.id)).toContain('cabbage');
+    const seen = first.result.combos.map((c) => c.key);
+    const again = runWorkerRequest({ ...base, locked: ['cabbage'], seen });
+    if (!again.ok || again.kind !== 'meal')
+      throw new Error('expected a meal result');
+    for (const c of again.result.combos) expect(seen).not.toContain(c.key);
+  });
+
+  it('applies otherPicked as context (a different protein group first)', () => {
+    const plain = runWorkerRequest({ ...base, count: 5 });
+    if (!plain.ok || plain.kind !== 'meal')
+      throw new Error('expected a meal result');
+    const withCtx = runWorkerRequest({
+      ...base,
+      count: 5,
+      otherPicked: [plain.result.combos[0]],
+    });
+    if (!withCtx.ok || withCtx.kind !== 'meal')
+      throw new Error('expected a meal result');
+    const group = (c: (typeof plain.result.combos)[number]) =>
+      c.items.find((i) => i.food.category === 'protein')!.food.group;
+    expect(group(withCtx.result.combos[0])).not.toBe(
+      group(plain.result.combos[0]),
+    );
+  });
+
+  it('an engine failure reason comes back in the result (NEED_FIBER), not as an error', () => {
+    const res = runWorkerRequest({
+      ...base,
+      selection: { foods: { 'chicken-breast': 'ok' }, seasonings: {} },
+    });
+    if (!res.ok || res.kind !== 'meal')
+      throw new Error('expected a meal result');
+    expect(res.result).toMatchObject({ combos: [], reason: 'NEED_FIBER' });
+  });
+
+  it('an exception becomes an error response carrying kind, id and meal', () => {
+    const res = runWorkerRequest({ ...base, targets: null as never });
+    expect(res).toMatchObject({
+      ok: false,
+      kind: 'meal',
+      id: 11,
+      meal: 'lunch',
+    });
+  });
+});
