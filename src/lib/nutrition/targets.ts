@@ -108,7 +108,7 @@ export function calcDayTargets(
   // A user-set net-carb amount is respected as is: step 6 does not raise it.
   const carbTopUp = !overrides.netCarbs;
   const totalCarbMax =
-    (kcal * TOTAL_CARB_KCAL_RATIO_MAX) / KCAL_PER_GRAM.netCarbs;
+    (kcal * TOTAL_CARB_KCAL_RATIO_MAX[goal]) / KCAL_PER_GRAM.netCarbs;
 
   let fat: DayTargets['fat'];
   if (overrides.fat) {

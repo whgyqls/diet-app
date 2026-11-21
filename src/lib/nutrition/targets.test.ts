@@ -52,7 +52,7 @@ describe('calcDayTargets (automatic)', () => {
     expect(m.kcal).toBeCloseTo(1698.75 * 1.55, 6);
     expectProtein(m.protein, 90, 120);
     expect(m.netCarbMax).toBeCloseTo((m.kcal * 0.25) / 4, 6);
-    expect(m.totalCarbMax).toBeCloseTo((m.kcal * 0.45) / 4, 6);
+    expect(m.totalCarbMax).toBeCloseTo((m.kcal * 0.5) / 4, 6); // maintenance: 50%
     // KDRI 2020 man 30-49
     expect(m.fiberMin).toBe(30);
     expect(m.micros).toEqual({
@@ -68,6 +68,15 @@ describe('calcDayTargets (automatic)', () => {
     expect(g.kcal).toBeCloseTo(1648.75 * 1.55 * 1.1, 6);
     expectProtein(g.protein, 112, 140);
     expect(g.netCarbMax).toBeCloseTo((g.kcal * 0.3) / 4, 6);
+  });
+
+  it('caps total carbs at 45% of kcal for weight loss and 50% for maintenance and gain, with a 100 g/day floor', () => {
+    const lose = calcDayTargets(loseF, REF_YEAR).targets;
+    const gain = calcDayTargets(gainM, REF_YEAR).targets;
+    expect(lose.totalCarbMax).toBeCloseTo((lose.kcal * 0.45) / 4, 6);
+    expect(gain.totalCarbMax).toBeCloseTo((gain.kcal * 0.5) / 4, 6);
+    expect(lose.totalCarbMin).toBe(100);
+    expect(gain.totalCarbMin).toBe(100);
   });
 
   it('applies the kcal floor (female 1200, male 1500) to automatic values without a warning', () => {

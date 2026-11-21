@@ -62,10 +62,15 @@ export const NET_CARB_KCAL_RATIO: Record<Goal, number> = {
   gain: 0.3,
 };
 /**
- * Default diet: total carbs (net carbs + fiber) up to this share of kcal. Fill step 6 may add whole grains and
- * legumes up to it. 45% = lower bound of the IOM AMDR (45-65%); KDRI 2020 AMDR is 55-65% (PLAN.md 4.1-3).
+ * Default diet: total carbs (net carbs + fiber) up to this share of the kcal eaten. Fill step 6 may add whole
+ * grains and legumes up to it. Weight loss 45% = lower bound of the IOM AMDR (45-65%); maintenance and gain 50%,
+ * inside the IOM range and closer to KDRI 2020's 55-65% (PLAN.md 4.1-3).
  */
-export const TOTAL_CARB_KCAL_RATIO_MAX = 0.45;
+export const TOTAL_CARB_KCAL_RATIO_MAX: Record<Goal, number> = {
+  lose: 0.45,
+  maintain: 0.5,
+  gain: 0.5,
+};
 /** Default diet: total carbs per day at least the KDRI 2020 adult EAR (100 g). */
 export const TOTAL_CARB_DAY_MIN_G = 100;
 /** Carb foods step 6 may grow: whole grains and legumes. */
@@ -223,8 +228,11 @@ export const AGE_BANDS: readonly { from: number; band: AgeBand }[] = [
   { from: 30, band: '30-49' },
   { from: 0, band: '19-29' },
 ];
-/** A micronutrient is listed as short when the day total is below this share of its KDRI value. */
-export const MICRO_SHORTFALL_RATIO = 1.0;
+/**
+ * A micronutrient is listed as short, and weakly penalized, only when the day total is below this share of its
+ * KDRI value (allows for day-to-day variation).
+ */
+export const MICRO_SHORTFALL_RATIO = 0.9;
 /**
  * Micronutrients that are hard to cover from food alone (vitamin D: sun and fortified foods). A shortfall is
  * still listed, with a note, but it is not penalized in the score.

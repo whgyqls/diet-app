@@ -317,7 +317,7 @@ describe('generateDayPlan', () => {
       }
       const listed = new Set(day.shortfalls.map((s) => s.nutrient));
       for (const k of Object.keys(day.micros) as (keyof typeof day.micros)[])
-        expect(listed.has(k)).toBe(day.micros[k] < day.targets.micros[k]);
+        expect(listed.has(k)).toBe(day.micros[k] < day.targets.micros[k] * 0.9);
     }
   });
 

@@ -976,9 +976,9 @@
       "group": "씨앗",
       "basis": "raw",
       "per100g": {"kcal": 486, "protein": 16.5, "carbs": 42.1, "fiber": 34.4, "fat": 30.7, "satFat": 3.3, "sodium": 16, "cholesterol": 0},
-      "micro100g": {"potassium": 407, "calcium": 631, "iron": 7.7, "vitaminC": 1.6},
+      "micro100g": {"potassium": 407, "calcium": 631, "iron": 7.7, "vitaminC": 1.6, "vitaminD": 0.0},
       "note": "물에 불리면 젤처럼 부풀어 오름",
-      "source": {"items": [{"file": "raw_foods_utf8.csv", "code": "R105-038000002-0000", "name": "치아씨_씨앗_말린것"}], "method": "단일 항목"},
+      "source": {"items": [{"file": "raw_foods_utf8.csv", "code": "R105-038000002-0000", "name": "치아씨_씨앗_말린것"}], "method": "단일 항목 / vitaminD: 원자료 빈칸, 식물성 씨앗이라 0으로 처리"},
       "portion": {"min": 5, "max": 15, "step": 5},
       "cookingHint": "물·요거트에 불리기"
     },

@@ -154,6 +154,7 @@ for fid, code in [('almond', 'R105-020000058-0000'), ('walnut', 'R105-035000002-
                   ('perilla-seed', 'R105-005000058-0000'), ('sesame', 'R105-026020058-0000'), ('flaxseed', 'R105-037000058-0000'),
                   ('chia', 'R105-038000002-0000'), ('avocado', 'R108-064000001-0000')]:
     SPEC[fid] = dict(codes=R(code))
+SPEC['chia']['micro_zero'] = {'vitaminD': '원자료 빈칸, 식물성 씨앗이라 0으로 처리'}
 
 NOTES = {
     'mackerel': '오메가3 지방산이 많은 등푸른 생선',
@@ -249,6 +250,10 @@ def build(fid, spec):
             extra_items += fill_codes
             flags.append('보충')
             notes.append(f'{k}는 같은 식품의 다른 항목({len(fill_codes)}개)에서 보충')
+    for k, reason in spec.get('micro_zero', {}).items():
+        if micro[k] is None:
+            micro[k] = 0.0
+            notes.append(f'{k}: {reason}')
     for k, (value, fdc, desc) in spec.get('micro_usda', {}).items():
         if micro[k] is None:
             micro[k] = value

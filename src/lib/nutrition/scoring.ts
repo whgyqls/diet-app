@@ -12,6 +12,7 @@ import {
   KCAL_SCORE_INSIDE_WEIGHT,
   KCAL_SCORE_TOLERANCE_RATIO,
   MICRO_KEYS,
+  MICRO_SHORTFALL_RATIO,
   MICROS_HARD_FROM_FOOD,
   SCORE_WEIGHTS,
 } from './constants';
@@ -25,7 +26,7 @@ const under = (value: number, min: number) =>
 
 /**
  * Total-carb cap in grams for a meal/day that actually provides `kcalEaten`: the 45% share of the kcal eaten
- * (like fat), not of the target. `t.totalCarbMax` is 45% of the target kcal.
+ * (like fat), not of the target. `t.totalCarbMax` is the goal's share (45% / 50%) of the target kcal.
  */
 export function carbCapGrams(
   t: Pick<MealTargets, 'totalCarbMax' | 'kcal'>,
@@ -92,7 +93,7 @@ export function scoreCombo(
     microUnder: micros
       ? w.microUnder *
         MICRO_KEYS.filter((k) => !MICROS_HARD_FROM_FOOD.includes(k)).reduce(
-          (a, k) => a + under(micros[k], t.micros[k]),
+          (a, k) => a + under(micros[k], t.micros[k] * MICRO_SHORTFALL_RATIO),
           0,
         )
       : 0,

@@ -130,6 +130,18 @@ describe('scoreCombo', () => {
     expect(score({}).microUnder).toBe(0);
   });
 
+  it('penalizes a micronutrient only below 90% of its KDRI share', () => {
+    const at = (r: number) =>
+      scoreCombo(ideal, LUNCH, 0, {
+        ...LUNCH.micros,
+        calcium: LUNCH.micros.calcium * r,
+      }).microUnder;
+    expect(at(0.95)).toBe(0);
+    expect(at(0.9)).toBe(0);
+    expect(at(0.89)).toBeGreaterThan(0);
+    expect(at(0.5)).toBeGreaterThan(at(0.89));
+  });
+
   it('does not penalize a vitamin D shortfall (hard to cover from food), but still penalizes the others', () => {
     const noD = { ...LUNCH.micros, vitaminD: 0 };
     expect(scoreCombo(ideal, LUNCH, 0, noD).microUnder).toBe(0);
