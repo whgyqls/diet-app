@@ -448,3 +448,17 @@ export const UNMET_TARGET_TOLERANCE = 0.95;
 
 /** Best combos per `includeFoods` item added to each meal's day-plan options. */
 export const DAY_PLAN_OPTIONS_PER_INCLUDE = 3;
+
+// ---- Profile input limits (onboarding form validation) ------------------------
+
+export const PROFILE_LIMITS = {
+  birthYear: { min: 1920, max: 2012 },
+  heightCm: { min: 120, max: 230 },
+  weightKg: { min: 30, max: 250 },
+} as const;
+/** Advanced inputs: sodium cap (mg) lower bound and net carb / fat gram bounds. */
+export const ADVANCED_LIMITS = {
+  sodiumMg: { min: 300, max: 6000 },
+  proteinPerKg: { min: 0.1, max: 4 },
+  grams: { min: 0, max: 600 },
+} as const;
