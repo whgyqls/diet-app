@@ -20,7 +20,7 @@
 data/                 foods.json, seasonings.json
 src/app/              라우트(/, /onboarding, /select, /plan, /saved, /settings, /api/explain)
 src/components/       UI 컴포넌트
-src/lib/nutrition/    constants, targets, portions, seasoning, badges, highlights, scoring, generate (순수 함수 + *.test.ts)
+src/lib/nutrition/    constants, targets, styles, flags, portions, seasoning, badges, highlights, scoring, generate (순수 함수 + *.test.ts)
 src/lib/supabase/     클라이언트/서버 클라이언트, 쿼리
 src/types/            공용 타입
 supabase/migrations/  SQL

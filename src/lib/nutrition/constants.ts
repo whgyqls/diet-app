@@ -1,5 +1,11 @@
 // Single home for nutrition constants (CLAUDE.md). Rules and sources: PLAN.md chapters 3.2, 4, 5.
-import type { Goal, MealType, MealsPerDay, Sex } from '@/types/nutrition';
+import type {
+  DietStyle,
+  Goal,
+  MealType,
+  MealsPerDay,
+  Sex,
+} from '@/types/nutrition';
 
 // ---- Data validation (Phase 1) --------------------------------------------
 
@@ -401,3 +407,44 @@ export const LOW_FAT_MAX_PER100G = 3;
 export const HIGH_SODIUM_MIN_PER100G = 150;
 export const HIGH_FAT_PROTEIN_MIN_PER100G = 10;
 export const MAX_CHIPS = 2;
+
+// ---- Diet styles (PLAN.md 4.5) -------------------------------------------------
+
+/**
+ * Diet style presets. Several can be combined: exclusions are merged, numbers take the stricter side
+ * (see styles.ts). Priority: default diet -> styles -> the user's own overrides.
+ */
+export const STYLE_RULES = {
+  /** Lower carb cap; the 100 g/day floor is dropped; unsaturated fat may fill kcal up to 45%. */
+  lowCarb: {
+    totalCarbRatioMax: {
+      lose: 0.25,
+      maintain: 0.3,
+      gain: 0.35,
+    } satisfies Record<Goal, number>,
+    fatMaxRatio: FAT_KCAL_RATIO_UNSAT_MAX_LOW_CARB,
+  },
+  /** Sodium cap 1,500 mg; free seasonings first and a smaller share of the budget for salty ones. */
+  lowSodium: { sodiumMax: 1500, seasoningBudgetRatio: 0.4 },
+  /** Fiber 40 g/day, two fiber sources per meal, vegetables start high, less base carb. */
+  veggieForward: {
+    fiberDayMin: 40,
+    fiberSourcesPerMeal: 2,
+    veggieStartG: 150,
+    netCarbMultiplier: 0.8,
+  },
+  highProtein: { proteinPerKgBase: 1.8, proteinPerKgFillMax: 2.0 },
+  pescatarian: { excludedGroups: [...PROTEIN_GROUPS.meat] },
+  lactoOvo: {
+    excludedGroups: [...PROTEIN_GROUPS.meat, ...PROTEIN_GROUPS.seafood],
+  },
+} as const satisfies Record<DietStyle, object>;
+
+/** Score bonus (subtracted) for a meal without a carb food in the low-carb style. */
+export const LOW_CARB_NO_CARB_BONUS = 0.15;
+
+/** A protein/fiber/kcal target counts as unmet below this share of it (shown as a shortfall). */
+export const UNMET_TARGET_TOLERANCE = 0.95;
+
+/** Best combos per `includeFoods` item added to each meal's day-plan options. */
+export const DAY_PLAN_OPTIONS_PER_INCLUDE = 3;

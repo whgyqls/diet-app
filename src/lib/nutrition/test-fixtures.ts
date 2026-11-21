@@ -4,6 +4,7 @@ import seasoningsJson from '../../../data/seasonings.json';
 import { foodsFileSchema, seasoningsFileSchema } from '@/lib/data/schemas';
 import type { Food, Seasoning } from '@/types/food';
 import type { MealTargets, Profile, Selection } from '@/types/nutrition';
+import { KCAL_FILL_ORDER } from './constants';
 
 export const FOODS: Food[] = foodsFileSchema.parse(foodsJson).foods;
 export const SEASONINGS: Seasoning[] =
@@ -82,6 +83,14 @@ export const LUNCH: MealTargets = {
     vitaminC: 35,
     vitaminA: 227.5,
     vitaminD: 3.5,
+  },
+  rules: {
+    fillOrder: KCAL_FILL_ORDER,
+    veggieStartG: 100,
+    requireTwoFiberSources: false,
+    excludedGroups: [],
+    preferNoCarb: false,
+    seasoningBudgetRatio: 0.6,
   },
 };
 

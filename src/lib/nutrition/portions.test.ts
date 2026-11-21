@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Food } from '@/types/food';
 import type { ComboFoods, MealTargets, PortionResult } from '@/types/nutrition';
 import { calcPortions, netCarbs, nutrientsOf } from './portions';
+import { KCAL_FILL_ORDER_LOW_CARB } from './constants';
 import { LUNCH, food, makeFood, seasoning } from './test-fixtures';
 
 const grams = (r: PortionResult, id: string) =>
@@ -425,5 +426,85 @@ describe('calcPortions: default-diet steps 5-6 and extra totals', () => {
       );
     expect(r.totals.satFat).toBeCloseTo(expected, 9);
     expect(r.totals.satFat).toBeGreaterThan(0);
+  });
+});
+
+describe('calcPortions: style rules on the targets', () => {
+  const combo = {
+    protein: food('cod'),
+    fibers: [food('cabbage')],
+    fat: food('walnut'),
+  };
+
+  it('vegetables start at rules.veggieStartG (150 g) instead of 100 g', () => {
+    const t: MealTargets = {
+      ...LUNCH,
+      fiberMin: 1, // no growth needed, so the start amount stays visible
+      rules: { ...LUNCH.rules, veggieStartG: 150 },
+    };
+    expect(grams(solve({ ...combo, fat: undefined }, t), 'cabbage')).toBe(150);
+    expect(
+      grams(
+        solve({ ...combo, fat: undefined }, { ...t, rules: LUNCH.rules }),
+        'cabbage',
+      ),
+    ).toBe(100);
+  });
+
+  it('a vegetable start above its portion max is cut to the max', () => {
+    const t: MealTargets = {
+      ...LUNCH,
+      fiberMin: 1,
+      rules: { ...LUNCH.rules, veggieStartG: 500 },
+    };
+    expect(grams(solve({ ...combo, fat: undefined }, t), 'cabbage')).toBe(
+      food('cabbage').portion.max,
+    );
+  });
+
+  it('the low-carb fill order adds unsaturated fat beyond 35% (step "fatToStage3"), the default order does not', () => {
+    const base: MealTargets = {
+      ...LUNCH,
+      kcal: 700,
+      protein: { base: 30, max: 30 },
+      fat: { stage1: 23, stage2: 27, stage3: 35 }, // 30% / 35% / 45% of 700 kcal
+    };
+    const low = solve(
+      combo,
+      {
+        ...base,
+        rules: { ...base.rules, fillOrder: KCAL_FILL_ORDER_LOW_CARB },
+      },
+      ['olive-oil'],
+    );
+    const normal = solve(combo, { ...base, fat: { ...base.fat, stage3: 27 } }, [
+      'olive-oil',
+    ]);
+    expect(low.kcalByStep.fatToStage3).toBeGreaterThan(0);
+    expect(normal.kcalByStep.fatToStage3).toBe(0);
+    expect((low.totals.fat * 9) / low.totals.kcal).toBeLessThanOrEqual(
+      0.45 + 1e-9,
+    );
+    expect(low.totals.fat).toBeGreaterThan(normal.totals.fat);
+  });
+
+  it('the low-carb fill order never tops up carbs', () => {
+    const t: MealTargets = {
+      ...LUNCH,
+      kcal: 900,
+      protein: { base: 30, max: 80 },
+      netCarbMax: 15,
+      totalCarbMax: 101.25,
+      rules: { ...LUNCH.rules, fillOrder: KCAL_FILL_ORDER_LOW_CARB },
+    };
+    const r = solve(
+      {
+        protein: food('cod'),
+        carb: food('brown-rice'),
+        fibers: [food('cabbage')],
+      },
+      t,
+    );
+    expect(r.kcalByStep.carbsTopUp).toBe(0);
   });
 });

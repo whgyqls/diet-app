@@ -1,8 +1,16 @@
 // Types for the nutrition engine (src/lib/nutrition). Weights in g, sodium in mg.
-import type { MicroKey } from '@/lib/nutrition/constants';
+import type { KcalFillStep, MicroKey } from '@/lib/nutrition/constants';
 import type { Food, Seasoning } from './food';
 
 export type { MicroKey };
+
+export type DietStyle =
+  | 'lowCarb'
+  | 'lowSodium'
+  | 'veggieForward'
+  | 'highProtein'
+  | 'pescatarian'
+  | 'lactoOvo';
 
 export type Sex = 'female' | 'male';
 export type Goal = 'lose' | 'maintain' | 'gain';
@@ -29,6 +37,54 @@ export type TargetOverrides = {
   sodiumMax?: number;
 };
 
+/** Style-resolved settings (styles.ts). Undefined number = the style does not touch it. */
+export type StyleSettings = {
+  styles: DietStyle[];
+  excludedGroups: string[]; // food.group values that are left out
+  totalCarbRatioMax?: number;
+  dropTotalCarbMin: boolean;
+  fatMaxRatio?: number;
+  lowCarbFill: boolean; // use KCAL_FILL_ORDER_LOW_CARB
+  sodiumMax?: number;
+  seasoningBudgetRatio?: number;
+  fiberDayMin?: number;
+  requireTwoFiberSources: boolean;
+  veggieStartG?: number;
+  netCarbMultiplier?: number;
+  proteinPerKgBase?: number;
+  proteinPerKgFillMax?: number;
+  preferNoCarb: boolean;
+};
+
+/** How a plan is built (from the default diet and the chosen styles). */
+export type PlanRules = {
+  fillOrder: readonly KcalFillStep[];
+  veggieStartG: number;
+  requireTwoFiberSources: boolean;
+  excludedGroups: readonly string[];
+  preferNoCarb: boolean;
+  seasoningBudgetRatio: number; // share of the seasoning sodium budget salty seasonings may use
+};
+
+/** Per-meal options of a recommendation request. */
+export type MealOptions = {
+  kcalRatio?: number; // share of the day kcal (0-1)
+  carb?: 'required' | 'none';
+  veggieCount?: 1 | 2;
+};
+
+/**
+ * What the user asked for (screen controls now, an AI-parsed natural-language request in Phase 6).
+ * It only holds conditions; every number is still computed by the engine.
+ */
+export type RecommendationConditions = {
+  styles?: DietStyle[];
+  overrides?: TargetOverrides;
+  excludeFoods?: string[]; // food ids that must not appear
+  includeFoods?: string[]; // food ids that must appear at least once in the day
+  meals?: Partial<Record<MealType, MealOptions>>;
+};
+
 /**
  * Grams unless noted. fat.stage1/2 = fat caps for kcal fill steps 3 and 5 (30/35% of kcal);
  * fat.stage3 = the highest fat the diet allows (default = stage2; a future low-carb style raises it to 45%).
@@ -50,6 +106,7 @@ export type NutrientTargets = {
   fiberSoftMax: number; // weak penalty above this
   sodiumMax: number; // mg
   micros: Record<MicroKey, number>; // KDRI reference for the person (share of it per meal)
+  rules: PlanRules;
 };
 
 export type DayTargets = NutrientTargets;
@@ -67,9 +124,30 @@ export type HealthFlagCode =
   | 'HIGH_PROTEIN'
   | 'LOW_SODIUM'
   | 'LOW_NET_CARB'
+  | 'LOW_TOTAL_CARB'
   | 'HIGH_FAT_MOSTLY_UNSAT'
-  | 'HIGH_SAT_FAT';
+  | 'HIGH_FAT'
+  | 'HIGH_SAT_FAT'
+  | 'HIGH_CHOLESTEROL'
+  | 'LOW_KCAL'
+  | 'MICRO_SHORTFALL';
 export type FlagCode = TargetFlagCode | HealthFlagCode;
+
+/** A warning with its text and source, computed in flags.ts. basis: from a setting or from what is eaten. */
+export type Flag = {
+  code: FlagCode;
+  message: string;
+  source: string;
+  basis: 'setting' | 'intake';
+  detail?: string;
+};
+
+export type UnmetTarget = {
+  nutrient: 'protein' | 'fiber' | 'kcal';
+  target: number;
+  actual: number;
+  short: number; // target - actual, > 0
+};
 
 export type NutrientTotals = {
   kcal: number;
@@ -144,6 +222,7 @@ export type ScoreBreakdown = {
   cholesterolOver: number;
   microUnder: number;
   favorite: number;
+  styleBonus: number; // negative = bonus (e.g. no carb food in the low-carb style)
 };
 
 export type MealCombo = {
@@ -180,7 +259,11 @@ export type DayPlan = {
     hardFromFood: boolean;
   }[];
   flags: FlagCode[];
+  flagDetails: Flag[]; // same warnings with message, source and basis
+  unmetTargets: UnmetTarget[]; // protein/fiber/kcal the chosen foods could not reach
+  missingIncludes: string[]; // includeFoods that are not in the plan
   reason?: GenerateFailReason;
 };
 
-export type GenerateFailReason = 'NEED_PROTEIN' | 'NEED_FIBER' | 'NO_MATCH';
+export type GenerateFailReason =
+  'NEED_PROTEIN' | 'NEED_FIBER' | 'NEED_CARB' | 'NO_MATCH';

@@ -4,9 +4,9 @@ import type {
   ComboFoods,
   DayPlan,
   DayTargets,
-  FlagCode,
   GenerateFailReason,
   MealCombo,
+  MealOptions,
   MealPlan,
   MealTargets,
   MealType,
@@ -14,21 +14,23 @@ import type {
   NutrientTotals,
   PortionedFood,
   Profile,
+  RecommendationConditions,
   Selection,
   TargetOverrides,
+  UnmetTarget,
 } from '@/types/nutrition';
 import {
   CARB_TOLERANCE_G,
   COMBOS_PER_MEAL,
   DAY_PLAN_OPTIONS_PER_GROUP,
+  DAY_PLAN_OPTIONS_PER_INCLUDE,
   DAY_PLAN_OPTIONS_PER_MEAL,
   FAVORITE_BONUS,
   FIBER_SETS_PER_MEAL,
   FIBER_SET_REPEAT_PENALTY,
-  HIGH_FAT_WARN_RATIO,
-  HIGH_PROTEIN_WARN_PER_KG,
   KCAL_PER_GRAM,
   MEAL_KCAL_WARN_RATIO,
+  LOW_CARB_NO_CARB_BONUS,
   MMR_PENALTY,
   MICRO_KEYS,
   MICRO_SHORTFALL_RATIO,
@@ -38,7 +40,7 @@ import {
   type ProteinGroup,
   SAT_FAT_KCAL_RATIO_MAX,
   SCORE_WEIGHTS,
-  VEGGIE_DEFAULT_G,
+  UNMET_TARGET_TOLERANCE,
 } from './constants';
 import {
   ZERO_TOTALS,
@@ -46,8 +48,10 @@ import {
   calcPortions,
   seasoningNutrients,
 } from './portions';
+import { computeFlags } from './flags';
 import { carbCapGrams, scoreCombo } from './scoring';
 import { seasoningPlanner } from './seasoning';
+import { resolveStyles } from './styles';
 import { calcDayTargets, calcMealTargets } from './targets';
 
 export function comboKey(c: ComboFoods): string {
@@ -121,7 +125,13 @@ export function buildMealCombo(
     kcalGap: Math.max(0, t.kcal - totals.kcal),
     kcalWarning: totals.kcal < t.kcal * MEAL_KCAL_WARN_RATIO,
     micros,
-    score: scoreCombo(totals, t, favorites, micros),
+    score: scoreCombo(
+      totals,
+      t,
+      favorites,
+      micros,
+      t.rules.preferNoCarb && !combo.carb ? LOW_CARB_NO_CARB_BONUS : 0,
+    ),
   };
 }
 
@@ -146,12 +156,14 @@ function fiberSets(
   t: MealTargets,
   prefs: Selection['foods'],
   locked: Set<string>,
+  sizes: readonly number[],
 ): Food[][] {
   const sets: Food[][] = [];
   for (let i = 0; i < fibers.length; i++) {
-    sets.push([fibers[i]]);
-    for (let j = i + 1; j < fibers.length; j++)
-      sets.push([fibers[i], fibers[j]]);
+    if (sizes.includes(1)) sets.push([fibers[i]]);
+    if (sizes.includes(2))
+      for (let j = i + 1; j < fibers.length; j++)
+        sets.push([fibers[i], fibers[j]]);
   }
   const lockedFibers = fibers.filter((f) => locked.has(f.id));
   const allowed = sets.filter((s) => lockedFibers.every((f) => s.includes(f)));
@@ -162,7 +174,7 @@ function fiberSets(
     for (const v of set) {
       const g = Math.min(
         v.portion.max,
-        Math.max(v.portion.min, VEGGIE_DEFAULT_G),
+        Math.max(v.portion.min, t.rules.veggieStartG),
       );
       fiber += (v.per100g.fiber * g) / 100;
       sodium += (v.per100g.sodium * g) / 100;
@@ -172,7 +184,7 @@ function fiberSets(
     )) {
       const g0 = Math.min(
         v.portion.max,
-        Math.max(v.portion.min, VEGGIE_DEFAULT_G),
+        Math.max(v.portion.min, t.rules.veggieStartG),
       );
       const extra = Math.min(
         v.portion.max - g0,
@@ -270,6 +282,8 @@ export type MealRequest = {
   locked?: string[];
   seen?: Iterable<string>;
   count?: number;
+  excludeFoods?: string[];
+  options?: MealOptions;
 };
 
 /** Protein group of a protein food (by its `group`), undefined for non-protein foods. */
@@ -304,15 +318,32 @@ function mealCandidates(req: MealRequest): {
   const { foods, seasonings, selection, targets } = req;
   const locked = new Set(req.locked ?? []);
   const seen = new Set(req.seen ?? []);
-  const selected = foods.filter((f) => selection.foods[f.id]).sort(byId);
+  const excludedIds = new Set(req.excludeFoods ?? []);
+  const excludedGroups = new Set(targets.rules.excludedGroups);
+  const selected = foods
+    .filter(
+      (f) =>
+        selection.foods[f.id] &&
+        !excludedIds.has(f.id) &&
+        !excludedGroups.has(f.group),
+    )
+    .sort(byId);
   const of = (cat: Food['category']) =>
     selected.filter((f) => f.category === cat);
   const lockedIn = (list: Food[]) => list.filter((f) => locked.has(f.id));
+  const opt = req.options ?? {};
+  // The user's per-meal vegetable count wins over the style's "two fiber sources".
+  const fiberSizes = opt.veggieCount
+    ? [opt.veggieCount]
+    : targets.rules.requireTwoFiberSources
+      ? [2]
+      : [1, 2];
 
   const proteins = of('protein');
   const fibers = of('fiber');
   if (proteins.length === 0) return { candidates: [], reason: 'NEED_PROTEIN' };
-  if (fibers.length === 0) return { candidates: [], reason: 'NEED_FIBER' };
+  if (fibers.length < Math.min(...fiberSizes))
+    return { candidates: [], reason: 'NEED_FIBER' };
 
   // A locked food narrows its slot to that food; an unlocked optional slot may stay empty.
   const slot = (list: Food[], optional: boolean): (Food | undefined)[] => {
@@ -321,9 +352,17 @@ function mealCandidates(req: MealRequest): {
     return optional ? [undefined, ...list] : list;
   };
   const proteinSlot = slot(proteins, false) as Food[];
-  const carbSlot = slot(of('carb'), true);
+  let carbSlot = slot(of('carb'), true);
+  if (lockedIn(of('carb')).length === 0) {
+    if (opt.carb === 'none') carbSlot = [undefined];
+    if (opt.carb === 'required') {
+      if (of('carb').length === 0)
+        return { candidates: [], reason: 'NEED_CARB' };
+      carbSlot = of('carb');
+    }
+  }
   const fatSlot = slot(of('fat'), true);
-  const sets = fiberSets(fibers, targets, selection.foods, locked);
+  const sets = fiberSets(fibers, targets, selection.foods, locked, fiberSizes);
   const locksOk = [proteinSlot, carbSlot, fatSlot].every(
     (s) => s.filter((f) => f && locked.has(f.id)).length <= 1,
   );
@@ -353,6 +392,9 @@ export type DayRequest = {
   selection: Selection;
   profile: Profile;
   refYear: number;
+  /** Styles, overrides, include/exclude foods and per-meal options. */
+  conditions?: RecommendationConditions;
+  /** Same as `conditions.overrides` (kept for existing callers). */
   overrides?: TargetOverrides;
   locked?: Partial<Record<MealType, string[]>>;
   seen?: Partial<Record<MealType, Iterable<string>>>;
@@ -360,6 +402,7 @@ export type DayRequest = {
 
 type DayPick = {
   idx: number[];
+  missing: number; // includeFoods not in the day
   violated: number; // how many day limits are broken
   groups: number;
   repeats: number;
@@ -367,12 +410,14 @@ type DayPick = {
 };
 
 /**
- * Lexicographic: fewer broken day limits, then more protein groups, fewer repeated foods, lower total.
- * Limits count as broken/not (not by how much), so a limit no option can meet (e.g. 100 g carbs with no
- * carb food selected) does not override variety; how far it is missed still weighs in `total`.
+ * Lexicographic: fewer missing includeFoods, fewer broken day limits, more protein groups, fewer repeated
+ * foods, lower total. Limits count as broken/not (not by how much), so a limit no option can meet (e.g.
+ * 100 g carbs with no carb food selected) does not override variety; how far it is missed still weighs in
+ * `total`.
  */
 function betterDay(a: DayPick, b: DayPick | undefined): boolean {
   if (!b) return true;
+  if (a.missing !== b.missing) return a.missing < b.missing;
   if (a.violated !== b.violated) return a.violated < b.violated;
   if (a.groups !== b.groups) return a.groups > b.groups;
   if (a.repeats !== b.repeats) return a.repeats < b.repeats;
@@ -380,40 +425,69 @@ function betterDay(a: DayPick, b: DayPick | undefined): boolean {
 }
 
 /**
- * Day-level limits as relative excess (0 when met): total carbs within [100 g, 45% of the kcal eaten
- * + CARB_TOLERANCE_G], saturated fat < 10%, fat within the diet's cap, cholesterol <= 300 mg.
+ * Day-level limits as relative excess (0 when met): total carbs within [100 g (0 in the low-carb style),
+ * the carb cap of the kcal eaten + CARB_TOLERANCE_G], saturated fat < 10%, fat within the diet's cap,
+ * cholesterol <= 300 mg, and each micronutrient (except vitamin D) at least 90% of its KDRI value.
  * Carb, fat and saturated-fat shares all use the kcal actually eaten.
  */
-function dayLimitExcess(day: NutrientTotals, t: DayTargets): number[] {
+function dayLimitExcess(
+  day: NutrientTotals,
+  t: DayTargets,
+  micros: Record<MicroKey, number>,
+): number[] {
   const fatCapShare = (t.fat.stage3 * KCAL_PER_GRAM.fat) / t.kcal;
   const fatKcal = (g: number) => g * KCAL_PER_GRAM.fat;
   const carbCap = carbCapGrams(t, day.kcal);
+  const carbShort =
+    t.totalCarbMin > 0
+      ? Math.max(0, t.totalCarbMin - day.carbs) / t.totalCarbMin
+      : 0;
   return [
-    Math.max(0, day.carbs - carbCap - CARB_TOLERANCE_G) / carbCap +
-      Math.max(0, t.totalCarbMin - day.carbs) / t.totalCarbMin,
+    Math.max(0, day.carbs - carbCap - CARB_TOLERANCE_G) / carbCap + carbShort,
     Math.max(0, fatKcal(day.satFat) / day.kcal - SAT_FAT_KCAL_RATIO_MAX) /
       SAT_FAT_KCAL_RATIO_MAX,
     Math.max(0, fatKcal(day.fat) / day.kcal - fatCapShare) / fatCapShare,
     Math.max(0, day.cholesterol - t.cholesterolMax) / t.cholesterolMax,
+    ...MICRO_KEYS.filter((k) => !MICROS_HARD_FROM_FOOD.includes(k)).map(
+      (k) =>
+        Math.max(0, t.micros[k] * MICRO_SHORTFALL_RATIO - micros[k]) /
+        t.micros[k],
+    ),
   ];
 }
 
 /**
  * Index per meal. In order of priority:
+ * (0) as few missing includeFoods as possible,
  * (1) as few broken day limits (dayLimitExcess) as possible,
  * (2) as many different protein groups as possible,
  * (3) as few foods repeated across meals as possible (protein, carb, vegetables, fat source),
  * (4) the lowest summed score. When the selection is too small, (2)-(3) give way.
  */
-function chooseDay(meals: MealCombo[][], t: DayTargets): number[] {
+function chooseDay(
+  meals: MealCombo[][],
+  t: DayTargets,
+  includeFoods: readonly string[],
+): number[] {
   let best: DayPick | undefined;
   const walk = (m: number, chosen: MealCombo[], idx: number[]) => {
     if (m === meals.length) {
       const foods = chosen.flatMap((c) => c.items.map((i) => i.food.id));
       const day = chosen.reduce((a, c) => addTotals(a, c.totals), ZERO_TOTALS);
-      const excess = dayLimitExcess(day, t);
+      const micros = chosen.reduce(
+        (a, c) => {
+          for (const k of MICRO_KEYS) a[k] += c.micros[k];
+          return a;
+        },
+        Object.fromEntries(MICRO_KEYS.map((k) => [k, 0])) as Record<
+          MicroKey,
+          number
+        >,
+      );
+      const excess = dayLimitExcess(day, t, micros);
       const pick: DayPick = {
         idx: [...idx],
+        missing: includeFoods.filter((id) => !foods.includes(id)).length,
         violated: excess.filter((e) => e > 0).length,
         groups: new Set(chosen.map(comboProteinGroup)).size,
         repeats: foods.length - new Set(foods).size,
@@ -438,6 +512,7 @@ function chooseDay(meals: MealCombo[][], t: DayTargets): number[] {
 function dayOptions(
   candidates: MealCombo[],
   t: MealTargets,
+  includeFoods: readonly string[],
 ): { top: MealCombo[]; options: MealCombo[] } {
   const options = pickDiverse(candidates, DAY_PLAN_OPTIONS_PER_MEAL);
   const top = options.slice(0, COMBOS_PER_MEAL);
@@ -454,16 +529,38 @@ function dayOptions(
       );
     }
   }
+  // The best combos that contain each includeFood, so the day can fit it somewhere.
+  for (const id of includeFoods) {
+    options.push(
+      ...candidates
+        .filter(
+          (c) => c.items.some((i) => i.food.id === id) && !options.includes(c),
+        )
+        .slice(0, DAY_PLAN_OPTIONS_PER_INCLUDE),
+    );
+  }
   return { top, options };
 }
 
 export function generateDayPlan(req: DayRequest): DayPlan {
-  const { targets, flags: targetFlags } = calcDayTargets(
+  const cond = req.conditions ?? {};
+  const styles = resolveStyles(cond.styles ?? [], req.profile.goal);
+  const { targets, flags: settingFlags } = calcDayTargets(
     req.profile,
     req.refYear,
-    req.overrides,
+    cond.overrides ?? req.overrides,
+    styles,
   );
-  const mealTargets = calcMealTargets(targets, req.profile.mealsPerDay);
+  const mealTargets = calcMealTargets(
+    targets,
+    req.profile.mealsPerDay,
+    cond.meals,
+  );
+  const excluded = new Set(cond.excludeFoods ?? []);
+  // An excluded food wins over an include of the same food.
+  const includeFoods = (cond.includeFoods ?? []).filter(
+    (id) => !excluded.has(id),
+  );
   let reason: GenerateFailReason | undefined;
 
   const generated = mealTargets.map((t) => {
@@ -474,9 +571,11 @@ export function generateDayPlan(req: DayRequest): DayPlan {
       targets: t,
       locked: req.locked?.[t.mealType],
       seen: req.seen?.[t.mealType],
+      excludeFoods: cond.excludeFoods,
+      options: cond.meals?.[t.mealType],
     });
     reason ??= r.reason ?? (r.candidates.length === 0 ? 'NO_MATCH' : undefined);
-    return dayOptions(r.candidates, t);
+    return dayOptions(r.candidates, t, includeFoods);
   });
 
   const meals: MealPlan[] = mealTargets.map((t) => ({
@@ -488,6 +587,7 @@ export function generateDayPlan(req: DayRequest): DayPlan {
     const chosen = chooseDay(
       generated.map((g) => g.options),
       targets,
+      includeFoods,
     );
     generated.forEach(({ top, options }, m) => {
       const first = options[chosen[m]];
@@ -497,28 +597,22 @@ export function generateDayPlan(req: DayRequest): DayPlan {
       );
     });
   }
+  const planned = meals.every((m) => m.combos.length > 0);
 
   const totals: NutrientTotals = meals.reduce(
     (a, m) => (m.combos[0] ? addTotals(a, m.combos[0].totals) : a),
     ZERO_TOTALS,
   );
-  const flags: FlagCode[] = [...targetFlags];
-  if (totals.kcal > 0) {
-    const satShare = (totals.satFat * KCAL_PER_GRAM.fat) / totals.kcal;
-    const fatShare = (totals.fat * KCAL_PER_GRAM.fat) / totals.kcal;
-    if (satShare >= SAT_FAT_KCAL_RATIO_MAX) flags.push('HIGH_SAT_FAT');
-    else if (fatShare > HIGH_FAT_WARN_RATIO)
-      flags.push('HIGH_FAT_MOSTLY_UNSAT');
-  }
-  if (
-    !flags.includes('HIGH_PROTEIN') &&
-    totals.protein > req.profile.weightKg * HIGH_PROTEIN_WARN_PER_KG
-  ) {
-    flags.push('HIGH_PROTEIN');
-  }
   const micros = microsOf(
     meals.flatMap((m) => (m.combos[0] ? m.combos[0].items : [])),
   );
+  // Warnings are computed once from the final values (flags.ts); with no plan only the setting ones.
+  const flagDetails = computeFlags({
+    profile: req.profile,
+    targets,
+    settingFlags,
+    ...(planned ? { intake: { totals, micros } } : {}),
+  });
   const shortfalls = MICRO_KEYS.filter(
     (k) => micros[k] < targets.micros[k] * MICRO_SHORTFALL_RATIO,
   ).map((k) => ({
@@ -528,13 +622,31 @@ export function generateDayPlan(req: DayRequest): DayPlan {
     ratio: micros[k] / targets.micros[k],
     hardFromFood: MICROS_HARD_FROM_FOOD.includes(k),
   }));
+  const unmet = (
+    nutrient: UnmetTarget['nutrient'],
+    target: number,
+    actual: number,
+  ): UnmetTarget[] =>
+    planned && actual < target * UNMET_TARGET_TOLERANCE
+      ? [{ nutrient, target, actual, short: target - actual }]
+      : [];
+  const dayFoods = meals.flatMap((m) =>
+    m.combos[0] ? m.combos[0].items.map((i) => i.food.id) : [],
+  );
   return {
     targets,
     meals,
     totals,
     micros,
     shortfalls,
-    flags,
+    flags: flagDetails.map((f) => f.code),
+    flagDetails,
+    unmetTargets: [
+      ...unmet('protein', targets.protein.base, totals.protein),
+      ...unmet('fiber', targets.fiberMin, totals.fiber),
+      ...unmet('kcal', targets.kcal, totals.kcal),
+    ],
+    missingIncludes: includeFoods.filter((id) => !dayFoods.includes(id)),
     ...(reason ? { reason } : {}),
   };
 }

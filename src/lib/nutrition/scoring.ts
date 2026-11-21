@@ -65,6 +65,7 @@ export function scoreCombo(
   t: MealTargets,
   favorites: number,
   micros?: Record<MicroKey, number>,
+  styleBonus = 0,
 ): ScoreBreakdown {
   const w = SCORE_WEIGHTS;
   const proteinErr =
@@ -98,6 +99,7 @@ export function scoreCombo(
         )
       : 0,
     favorite: -FAVORITE_BONUS * favorites,
+    styleBonus: -styleBonus,
   };
   const total = Object.values(parts).reduce((a, b) => a + b, 0);
   return { total, ...parts };

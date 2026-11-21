@@ -8,5 +8,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    // A full day plan with everything selected takes a few seconds.
+    testTimeout: 60_000,
   },
 });

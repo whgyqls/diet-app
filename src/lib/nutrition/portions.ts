@@ -9,11 +9,9 @@ import type {
 } from '@/types/nutrition';
 import {
   CARB_TOPUP_FOOD_IDS,
-  KCAL_FILL_ORDER,
   KCAL_PER_GRAM,
   MAX_OIL_KINDS_PER_MEAL,
   PORTION_SOLVER_MAX_ITER,
-  VEGGIE_DEFAULT_G,
 } from './constants';
 import { carbCapGrams } from './scoring';
 
@@ -132,7 +130,7 @@ function totalsOf(g: Grams, oil?: SeasoningUse): NutrientTotals {
 /** Steps 1-2 with vegetables: protein, carbs and vegetables depend on each other, so iterate to a fixed point. */
 function solveBase(combo: ComboFoods, t: MealTargets, g: Grams): void {
   const { protein, carb, fibers, fat } = combo;
-  for (const v of fibers) g.set(v, clampPortion(v, VEGGIE_DEFAULT_G));
+  for (const v of fibers) g.set(v, clampPortion(v, t.rules.veggieStartG));
   if (fat) g.set(fat, fat.portion.min);
   if (carb) g.set(carb, carb.portion.min);
   g.set(protein, protein.portion.min);
@@ -167,7 +165,7 @@ function solveBase(combo: ComboFoods, t: MealTargets, g: Grams): void {
     );
 
     // Vegetables: reset to default, then grow the most fiber-dense one first until fiber is met.
-    for (const v of fibers) g.set(v, clampPortion(v, VEGGIE_DEFAULT_G));
+    for (const v of fibers) g.set(v, clampPortion(v, t.rules.veggieStartG));
     let fiber = sumOf(g, 'fiber');
     for (const v of byDensity) {
       const perStep = (v.per100g.fiber * v.portion.step) / 100;
@@ -321,7 +319,7 @@ export function calcPortions(
     fatToStage3: 0,
     carbsTopUp: 0,
   };
-  for (const step of KCAL_FILL_ORDER) {
+  for (const step of t.rules.fillOrder) {
     if (step === 'fatToStage1') {
       fillFat(combo, t, g, oil, t.fat.stage1);
       byStep.fatToStage1 = fatKcal();
@@ -344,10 +342,10 @@ export function calcPortions(
 
   // Fat caps are shares of the kcal eaten, so the carbs added in the last step leave room for a little more
   // fat. Settle: repeat the last fat step and the carb top-up (same order) until neither adds anything.
-  const lastFat = [...KCAL_FILL_ORDER]
+  const lastFat = [...t.rules.fillOrder]
     .reverse()
     .find((s) => s === 'fatToStage3' || s === 'fatToStage2');
-  if (lastFat && KCAL_FILL_ORDER.includes('carbsTopUp')) {
+  if (lastFat && t.rules.fillOrder.includes('carbsTopUp')) {
     const cap = lastFat === 'fatToStage3' ? t.fat.stage3 : t.fat.stage2;
     for (let i = 0; i < PORTION_SOLVER_MAX_ITER; i++) {
       const before = sumOf(g, 'kcal', oil);

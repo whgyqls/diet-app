@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import type {
   DayPlan,
+  DietStyle,
   MealCombo,
   MealType,
   MicroKey,
@@ -246,6 +247,80 @@ function renderSummary(items: { label: string; plan: DayPlan }[]): string {
   return out.join('\n');
 }
 
+/** Diet-style examples: day totals and one ingredient line per meal. */
+const STYLE_EXAMPLES: {
+  label: string;
+  profileIndex: number;
+  styles: DietStyle[];
+  styleLabel: string;
+}[] = [
+  {
+    label: '감량 여성 60kg',
+    profileIndex: 0,
+    styles: ['lowCarb', 'lowSodium'],
+    styleLabel: '저탄수+저염',
+  },
+  {
+    label: '유지 남성 75kg',
+    profileIndex: 1,
+    styles: ['pescatarian'],
+    styleLabel: '페스코',
+  },
+  {
+    label: '근육 증가 남성 70kg',
+    profileIndex: 2,
+    styles: ['highProtein'],
+    styleLabel: '고단백',
+  },
+];
+
+function renderStyleExamples(): string {
+  const out: string[] = [];
+  const results = STYLE_EXAMPLES.map((e) => ({
+    e,
+    p: EXAMPLE_PROFILES[e.profileIndex].profile,
+    plan: generateDayPlan({
+      foods: FOODS,
+      seasonings: SEASONINGS,
+      selection: selectAll(),
+      profile: EXAMPLE_PROFILES[e.profileIndex].profile,
+      refYear: REF_YEAR,
+      conditions: { styles: e.styles },
+    }),
+  }));
+  out.push(
+    '| 사용자 · 스타일 | kcal (달성률) | 단백질 g/kg | 총탄수 % | 지방 % | 포화지방 % | 나트륨 mg (상한) | 플래그 |',
+  );
+  out.push('|---|---|---|---|---|---|---|---|');
+  for (const { e, p, plan } of results) {
+    const x = plan.totals;
+    out.push(
+      `| ${e.label} · ${e.styleLabel} | ${r0(x.kcal)} / ${r0(plan.targets.kcal)} (${r0((x.kcal / plan.targets.kcal) * 100)}%) | ${(x.protein / p.weightKg).toFixed(2)} | ${share(x.carbs, KCAL_PER_GRAM.netCarbs, x.kcal)} | ${share(x.fat, KCAL_PER_GRAM.fat, x.kcal)} | ${share(x.satFat, KCAL_PER_GRAM.fat, x.kcal)} | ${r0(x.sodium)} (≤${plan.targets.sodiumMax}) | ${plan.flags.length ? plan.flags.join(', ') : '없음'} |`,
+    );
+  }
+  for (const { e, plan } of results) {
+    out.push('');
+    out.push(`**${e.label} · ${e.styleLabel}**`);
+    for (const m of plan.meals) {
+      const c = m.combos[0];
+      const oil = c.oils.length ? ` · ${c.oils.map(useText).join(', ')}` : '';
+      out.push(
+        `- ${MEAL_LABEL[m.mealType]}: ${c.items.map((i) => `${i.food.name} ${i.grams}g`).join(' + ')}${oil}`,
+      );
+    }
+    const short = plan.shortfalls
+      .filter((sf) => !sf.hardFromFood)
+      .map((sf) => MICRO_LABEL[sf.nutrient]);
+    const unmet = plan.unmetTargets.map(
+      (u) => `${u.nutrient} ${r0(u.actual)}/${r0(u.target)}`,
+    );
+    out.push(
+      `  - 미량영양소 부족: ${short.length ? short.join(', ') : '없음'} · 목표 미달: ${unmet.length ? unmet.join(', ') : '없음'}`,
+    );
+  }
+  return out.join('\n');
+}
+
 describe('example users (PLAN.md Phase 2 check)', () => {
   const plans = EXAMPLE_PROFILES.map(({ label, profile }) => ({
     label,
@@ -290,6 +365,10 @@ describe('example users (PLAN.md Phase 2 check)', () => {
   );
 
   it('prints the tables when PRINT_EXAMPLES=1 (or only the day summary when =summary)', () => {
+    if (process.env.PRINT_EXAMPLES === 'styles') {
+      console.log(renderStyleExamples());
+      return;
+    }
     if (process.env.PRINT_EXAMPLES === 'summary') {
       console.log(renderSummary(plans));
       return;

@@ -6,10 +6,7 @@ import type {
   SeasoningResult,
   SeasoningUse,
 } from '@/types/nutrition';
-import {
-  MAX_SALTY_SEASONINGS_PER_MEAL,
-  SEASONING_SODIUM_BUDGET_RATIO,
-} from './constants';
+import { MAX_SALTY_SEASONINGS_PER_MEAL } from './constants';
 
 export function isSalty(s: Seasoning): boolean {
   return !s.free && !s.oil && s.perUnit.sodium > 0;
@@ -47,7 +44,8 @@ function options(salty: Seasoning[], prefs: Selection['seasonings']): Option[] {
 /**
  * Prepares the user's seasoning options once; the returned function suggests seasonings for one meal.
  * Free (no-sodium) seasonings come first. Budget = meal sodium cap - sodium already in the food (and oils);
- * salty seasonings (at most MAX_SALTY_SEASONINGS_PER_MEAL kind) may use SEASONING_SODIUM_BUDGET_RATIO of it.
+ * salty seasonings (at most MAX_SALTY_SEASONINGS_PER_MEAL kind) may use `t.rules.seasoningBudgetRatio` of it
+ * (60% by default, less in the low-sodium style).
  * The default diet only keeps below the cap; it does not try to reach a sodium minimum.
  * Among salty options that fit: favorites first, then the most sodium allowed, fewer units, id.
  */
@@ -66,7 +64,7 @@ export function seasoningPlanner(
   );
   return (foodSodium, t) => {
     const budget = t.sodiumMax - foodSodium;
-    const allowed = Math.max(0, budget) * SEASONING_SODIUM_BUDGET_RATIO;
+    const allowed = Math.max(0, budget) * t.rules.seasoningBudgetRatio;
     if (ranked.length === 0)
       return { budget, allowed, picks: [], free, reason: 'NO_SALTY_SELECTED' };
     const best = ranked.find((o) => o.sodium <= allowed);
