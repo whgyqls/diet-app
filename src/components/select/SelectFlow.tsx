@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useState } from 'react';
 import { FOODS, SEASONINGS } from '@/lib/data/load';
 import { isFoodExcludedByStyles } from '@/lib/nutrition/styleExclusion';
 import {
@@ -43,6 +43,11 @@ export function SelectFlow() {
 
 function Flow() {
   const s = useAppStore();
+  // Always open on the first step (a saved step would put people back on the last one, 양념).
+  // Layout effect: runs before paint, so the old step never flashes.
+  useLayoutEffect(() => {
+    useAppStore.getState().startSelection();
+  }, []);
   const [filter, setFilter] = useState<string | null>(null);
   const [sheet, setSheet] = useState<Food | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);

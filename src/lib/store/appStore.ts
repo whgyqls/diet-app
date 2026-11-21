@@ -61,6 +61,8 @@ export type AppState = {
   selectAllSeasonings: (ids: string[]) => void;
   clearAllSeasonings: (ids: string[]) => void;
   setStep: (n: number) => void;
+  /** Called when /select opens: always begin at the first step. The choices themselves stay. */
+  startSelection: () => void;
   /** Swaps the whole selection (reset all, undo, kit load). */
   replaceSelection: (sel: Selection) => void;
   replaceStyles: (styles: DietStyle[]) => void;
@@ -142,6 +144,7 @@ export function createAppStore(storage: StateStorage = safeLocalStorage()) {
         clearAllSeasonings: (ids) =>
           set((s) => ({ selection: clearAll(s.selection, 'seasonings', ids) })),
         setStep: (step) => set({ step }),
+        startSelection: () => set({ step: DEFAULT_STEP }),
         replaceSelection: (selection) => set({ selection }),
         replaceStyles: (styles) => set({ styles }),
         saveKit: (name, withStyles) => {

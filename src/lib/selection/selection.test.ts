@@ -4,6 +4,7 @@ import { isFoodExcludedByStyles } from '@/lib/nutrition/styleExclusion';
 import { nutritionFacts } from '@/lib/nutrition/nutritionFacts';
 import { OIL_GROUP } from '@/lib/nutrition/constants';
 import {
+  DEFAULT_STEP,
   STORAGE_KEY,
   createAppStore,
   type StateStorage,
@@ -124,6 +125,25 @@ describe('store persistence', () => {
     expect(b.getState().styles).toEqual(['pescatarian']);
     expect(b.getState().step).toBe(2);
   });
+  it('re-entering /select starts at the first step and keeps the saved choices', async () => {
+    const storage = memory();
+    const a = createAppStore(storage);
+    a.getState().toggleFood('chicken-breast');
+    a.getState().toggleSeasoning('salt');
+    a.getState().toggleStyle('lowSodium');
+    a.getState().setStep(4); // the user finished on the seasoning step last time
+
+    const b = createAppStore(storage);
+    await b.persist.rehydrate();
+    expect(b.getState().step).toBe(4); // the saved step comes back...
+    b.getState().startSelection(); // ...and entering the screen resets it
+    expect(b.getState().step).toBe(DEFAULT_STEP);
+    expect(DEFAULT_STEP).toBe(0); // 0 = protein, the first of STEPS
+    expect(b.getState().selection.foods['chicken-breast']).toBe('ok');
+    expect(b.getState().selection.seasonings['salt']).toBe('ok');
+    expect(b.getState().styles).toEqual(['lowSodium']);
+  });
+
   it('toggling a style twice removes it', () => {
     const s = createAppStore(memory());
     s.getState().toggleStyle('lowCarb');

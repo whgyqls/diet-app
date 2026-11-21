@@ -166,3 +166,22 @@ test('ingredient kits: save, reset, load (replace / merge), rename, delete, surv
     .click();
   await expect(sheet.getByText('저장한 세트가 없어요')).toBeVisible();
 });
+
+test('re-entering /select starts at the protein step with earlier choices still selected', async ({
+  page,
+}) => {
+  await page.goto('/select');
+  await page.getByRole('button', { name: /^닭가슴살, / }).click();
+  await step(page, '양념').click();
+  await expect(step(page, '양념')).toHaveAttribute('aria-current', 'step');
+
+  // leave and come back (the saved step used to bring back 양념)
+  await page.goto('/');
+  await page.goto('/select');
+  await expect(step(page, '단백질')).toHaveAttribute('aria-current', 'step');
+  await expect(
+    page.getByRole('button', { name: '닭가슴살, 먹을 수 있음' }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(step(page, '단백질')).toHaveAttribute('aria-current', 'step');
+});
