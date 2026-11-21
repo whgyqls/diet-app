@@ -94,7 +94,7 @@
 | 기초대사량 | Mifflin-St Jeor 공식 |
 | 하루 칼로리 | 기초대사량 × 활동계수(1.2 / 1.375 / 1.55 / 1.725 / 1.9) × 목표계수(감량 0.85, 유지 1.0, 근육 증가 1.1). 하한: 여성 1,200 / 남성 1,500 kcal |
 | 단백질 | 체중 × (감량 1.6 / 유지 1.2 / 근육 증가 1.8) g, 최대 2.0 g/kg |
-| 탄수화물(순탄수 = 탄수 − 식이섬유) | 하루 칼로리의 감량 20% / 유지 25% / 근육 증가 30% 이내 |
+| 탄수화물(순탄수 = 탄수 − 식이섬유) | 하루 칼로리의 감량 20% / 유지 25% / 근육 증가 30% 이내. 재료별 순탄수가 음수(식이섬유 > 탄수)면 0으로 처리 |
 | 식이섬유 | 하루 30 g 이상 (끼니당 최소 8 g) |
 | 나트륨 | 하루 2,000 mg 이하 (WHO 권고) |
 | 지방 | 나머지 칼로리 (상한만 체크) |
@@ -140,12 +140,20 @@ type Food = {
   per100g: { kcal: number; protein: number; carbs: number; fiber: number; fat: number; sodium: number };
   micro100g?: { potassium?: number; calcium?: number; iron?: number; vitaminA?: number; vitaminC?: number }; // mg, 비타민A는 μg RAE
   note?: string;           // 데이터로 계산 못 하는 특징 한 줄 (사람이 검토)
-  source?: string; _todo?: string;
+  source?: FoodSource; _todo?: string;
   portion: { min: number; max: number; step: number }; // g
   unit?: { label: string; grams: number };             // 예: 계란 1개 = 50g
   cookingHint: string;     // "삶기·굽기"
 };
+
+type FoodSource = {
+  items: { file: "raw_foods_utf8.csv" | "integrated_foods_utf8.csv" | "USDA FoodData Central"; code: string; name: string }[]; // 식품코드·식품명
+  method: string;          // 값을 만든 방법 (예: "한우 1등급·2등급 평균")
+  flags?: ("추정" | "보충" | "가슴살 기준값")[]; // 추정=계산 추정, 보충=다른 항목으로 빈칸 채움, 가슴살 기준값=닭가슴살 값 대용
+};
 ```
+
+- 값은 `scripts/curate_foods.py`가 `data/raw/`의 CSV에서 다시 만든다 (선정 규칙은 스크립트 상단 주석). 출처 우선순위: "대표_평균" > "평균" > 그 외, 채소는 일반 항목이 대표.
 
 ### 6.2 양념 (`data/seasonings.json`)
 ```ts
