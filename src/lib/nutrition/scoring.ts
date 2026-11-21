@@ -12,6 +12,7 @@ import {
   KCAL_SCORE_INSIDE_WEIGHT,
   KCAL_SCORE_TOLERANCE_RATIO,
   MICRO_KEYS,
+  MICROS_HARD_FROM_FOOD,
   SCORE_WEIGHTS,
 } from './constants';
 
@@ -21,6 +22,17 @@ const over = (value: number, limit: number, slack = 0) =>
 /** Relative shortfall below `min`. */
 const under = (value: number, min: number) =>
   min > 0 ? Math.max(0, min - value) / min : 0;
+
+/**
+ * Total-carb cap in grams for a meal/day that actually provides `kcalEaten`: the 45% share of the kcal eaten
+ * (like fat), not of the target. `t.totalCarbMax` is 45% of the target kcal.
+ */
+export function carbCapGrams(
+  t: Pick<MealTargets, 'totalCarbMax' | 'kcal'>,
+  kcalEaten: number,
+): number {
+  return t.kcal > 0 ? (t.totalCarbMax * kcalEaten) / t.kcal : 0;
+}
 
 /** Small slope inside ±tolerance, full weight on the part beyond it. Continuous at the edge. */
 function kcalPenalty(kcal: number, target: number): number {
@@ -63,7 +75,9 @@ export function scoreCombo(
   const parts = {
     kcal: kcalPenalty(totals.kcal, t.kcal),
     protein: w.protein * proteinErr,
-    carbOver: w.carbOver * over(totals.carbs, t.totalCarbMax, CARB_TOLERANCE_G),
+    carbOver:
+      w.carbOver *
+      over(totals.carbs, carbCapGrams(t, totals.kcal), CARB_TOLERANCE_G),
     carbUnder: w.carbUnder * under(totals.carbs, t.totalCarbMin),
     fiberUnder: w.fiberUnder * under(totals.fiber, t.fiberMin),
     fiberOver: w.fiberOver * over(totals.fiber, t.fiberSoftMax),
@@ -77,7 +91,10 @@ export function scoreCombo(
       w.cholesterolOver * over(totals.cholesterol, t.cholesterolMax),
     microUnder: micros
       ? w.microUnder *
-        MICRO_KEYS.reduce((a, k) => a + under(micros[k], t.micros[k]), 0)
+        MICRO_KEYS.filter((k) => !MICROS_HARD_FROM_FOOD.includes(k)).reduce(
+          (a, k) => a + under(micros[k], t.micros[k]),
+          0,
+        )
       : 0,
     favorite: -FAVORITE_BONUS * favorites,
   };

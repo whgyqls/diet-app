@@ -15,6 +15,7 @@ import {
   PORTION_SOLVER_MAX_ITER,
   VEGGIE_DEFAULT_G,
 } from './constants';
+import { carbCapGrams } from './scoring';
 
 export const ZERO_TOTALS: NutrientTotals = {
   kcal: 0,
@@ -266,9 +267,10 @@ function fillCarbs(
   let protein = sumOf(g, 'protein', oil);
   const proteinCap = Math.max(t.protein.max, protein); // legumes carry protein
   let grams = g.get(c)!;
+  // The 45% cap is a share of the kcal actually eaten (like fat), checked with the step added.
   while (
     grams + c.portion.step <= c.portion.max &&
-    carbs + d.carbs <= t.totalCarbMax &&
+    carbs + d.carbs <= carbCapGrams(t, kcal + d.kcal) &&
     kcal + d.kcal <= t.kcal &&
     protein + d.protein <= proteinCap
   ) {

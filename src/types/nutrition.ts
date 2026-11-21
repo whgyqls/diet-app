@@ -48,7 +48,6 @@ export type NutrientTargets = {
   cholesterolMax: number; // mg
   fiberMin: number;
   fiberSoftMax: number; // weak penalty above this
-  sodiumMin: number; // mg, seasonings may go a bit further to reach it
   sodiumMax: number; // mg
   micros: Record<MicroKey, number>; // KDRI reference for the person (share of it per meal)
 };
@@ -124,7 +123,7 @@ export type PortionResult = {
 
 export type SeasoningResult = {
   budget: number; // mg left for seasonings: meal cap - food sodium
-  allowed: number; // what salty seasonings may use: 60% of the budget, more to reach the sodium minimum
+  allowed: number; // what salty seasonings may use: 60% of the budget
   picks: SeasoningUse[];
   free: Seasoning[];
   reason?: 'NO_SALTY_SELECTED' | 'NO_SODIUM_BUDGET';
@@ -177,6 +176,8 @@ export type DayPlan = {
     amount: number;
     reference: number;
     ratio: number;
+    /** Hard to cover from food alone (vitamin D): show HARD_FROM_FOOD_NOTE with it; not penalized. */
+    hardFromFood: boolean;
   }[];
   flags: FlagCode[];
   reason?: GenerateFailReason;

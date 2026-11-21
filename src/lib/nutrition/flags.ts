@@ -1,6 +1,9 @@
 // User-facing text for target and health flags (PLAN.md 4.3, 4.4). Shown as is in Phase 3/4 screens.
 import type { FlagCode, HealthFlagCode } from '@/types/nutrition';
 
+/** Shown next to a micronutrient shortfall that food alone can hardly cover (vitamin D). */
+export const HARD_FROM_FOOD_NOTE = '음식만으로는 채우기 어려운 영양소예요';
+
 export const FLAG_MESSAGES: Record<FlagCode, string> = {
   HIGH_PROTEIN:
     '신장 질환이 있거나, 질환·복용 중인 약 때문에 단백질 섭취 제한을 권고받았다면 이 설정을 따르기 전에 의사와 상담하세요.',

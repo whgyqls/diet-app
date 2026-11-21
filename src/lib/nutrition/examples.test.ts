@@ -17,7 +17,7 @@ import {
   PROTEIN_GROUP_LABELS,
   type KcalFillStep,
 } from './constants';
-import { FLAG_MESSAGES } from './flags';
+import { FLAG_MESSAGES, HARD_FROM_FOOD_NOTE } from './flags';
 import { comboProteinGroup, generateDayPlan } from './generate';
 import {
   EXAMPLE_PROFILES,
@@ -130,7 +130,7 @@ function renderPlan(label: string, plan: DayPlan): string {
   );
   out.push('');
   out.push(
-    `하루 목표: ${r0(t.kcal)}kcal · 단백질 ${r0(t.protein.base)}g(${r1(t.protein.base / p.weightKg)}g/kg, 보충 시 최대 ${r1(t.protein.max / p.weightKg)}g/kg) · 순탄수 기본 ${r0(t.netCarbMax)}g · 총탄수 ${t.totalCarbMin}~${r0(t.totalCarbMax)}g(45%) · 지방 ≤${r0(t.fat.stage2)}g(35%) · 포화지방 <${r1(t.satFatTarget)}g(7%) · 콜레스테롤 ≤${t.cholesterolMax}mg · 식이섬유 ≥${t.fiberMin}g · 나트륨 ${t.sodiumMin}~${t.sodiumMax}mg`,
+    `하루 목표: ${r0(t.kcal)}kcal · 단백질 ${r0(t.protein.base)}g(${r1(t.protein.base / p.weightKg)}g/kg, 보충 시 최대 ${r1(t.protein.max / p.weightKg)}g/kg) · 순탄수 기본 ${r0(t.netCarbMax)}g · 총탄수 ${t.totalCarbMin}~${r0(t.totalCarbMax)}g(45%) · 지방 ≤${r0(t.fat.stage2)}g(35%) · 포화지방 <${r1(t.satFatTarget)}g(7%) · 콜레스테롤 ≤${t.cholesterolMax}mg · 식이섬유 ≥${t.fiberMin}g · 나트륨 ≤${t.sodiumMax}mg`,
   );
   out.push('');
   out.push(
@@ -196,8 +196,11 @@ function renderPlan(label: string, plan: DayPlan): string {
   for (const k of MICRO_KEYS) {
     const amount = plan.micros[k];
     const ref = t.micros[k];
-    const short = plan.shortfalls.some((sf) => sf.nutrient === k)
-      ? ' (부족)'
+    const sf = plan.shortfalls.find((x) => x.nutrient === k);
+    const short = sf
+      ? sf.hardFromFood
+        ? ` (부족 — ${HARD_FROM_FOOD_NOTE})`
+        : ' (부족)'
       : '';
     out.push(
       `| ${MICRO_LABEL[k]} | ${r1(amount)} | ${ref} | ${r0((amount / ref) * 100)}%${short} |`,
@@ -208,6 +211,38 @@ function renderPlan(label: string, plan: DayPlan): string {
     .join('·');
   out.push('');
   out.push(`자유 양념(나트륨 0, 먼저 권장, 합계 미포함): ${free}`);
+  return out.join('\n');
+}
+
+/** Day totals only (one row per user) + the micronutrient table (one column per user). */
+function renderSummary(items: { label: string; plan: DayPlan }[]): string {
+  const out: string[] = [];
+  out.push(
+    '| 사용자 | kcal (달성률) | 단백질 g/kg | 총탄수 % | 지방 % | 포화지방 % | 나트륨 mg | 플래그 |',
+  );
+  out.push('|---|---|---|---|---|---|---|---|');
+  for (const { label, plan } of items) {
+    const p = EXAMPLE_PROFILES.find((e) => e.label === label)!.profile;
+    const x = plan.totals;
+    out.push(
+      `| ${label} | ${r0(x.kcal)} / ${r0(plan.targets.kcal)} (${r0((x.kcal / plan.targets.kcal) * 100)}%) | ${(x.protein / p.weightKg).toFixed(2)} | ${share(x.carbs, KCAL_PER_GRAM.netCarbs, x.kcal)} | ${share(x.fat, KCAL_PER_GRAM.fat, x.kcal)} | ${share(x.satFat, KCAL_PER_GRAM.fat, x.kcal)} | ${r0(x.sodium)} | ${plan.flags.length ? plan.flags.join(', ') : '없음'} |`,
+    );
+  }
+  out.push('');
+  out.push(`| 영양소 | ${items.map((i) => i.label).join(' | ')} |`);
+  out.push(`|---|${items.map(() => '---').join('|')}|`);
+  for (const k of MICRO_KEYS) {
+    const cells = items.map(({ plan }) => {
+      const amount = plan.micros[k];
+      const ref = plan.targets.micros[k];
+      const sf = plan.shortfalls.find((x) => x.nutrient === k);
+      const note = sf ? ' ⚠ 부족' : '';
+      return `${r1(amount)} / ${ref} (${r0((amount / ref) * 100)}%)${note}`;
+    });
+    out.push(`| ${MICRO_LABEL[k]} | ${cells.join(' | ')} |`);
+  }
+  out.push('');
+  out.push(`비타민D 부족 안내: ${HARD_FROM_FOOD_NOTE}`);
   return out.join('\n');
 }
 
@@ -248,15 +283,17 @@ describe('example users (PLAN.md Phase 2 check)', () => {
       expect(plan.totals.carbs).toBeGreaterThanOrEqual(100);
       expect(plan.flags.filter((f) => f !== 'HIGH_PROTEIN')).toEqual([]);
       for (const c of chosen) {
-        expect(c.seasonings.picks.length).toBeLessThanOrEqual(2);
-        expect(saltySodium(c)).toBeLessThanOrEqual(
-          Math.max(0, c.seasonings.budget),
-        );
+        expect(c.seasonings.picks.length).toBeLessThanOrEqual(1);
+        expect(saltySodium(c)).toBeLessThanOrEqual(c.seasonings.allowed);
       }
     },
   );
 
-  it('prints the tables when PRINT_EXAMPLES=1', () => {
+  it('prints the tables when PRINT_EXAMPLES=1 (or only the day summary when =summary)', () => {
+    if (process.env.PRINT_EXAMPLES === 'summary') {
+      console.log(renderSummary(plans));
+      return;
+    }
     if (process.env.PRINT_EXAMPLES !== '1') return;
     console.log(
       plans.map(({ label, plan }) => renderPlan(label, plan)).join('\n\n'),

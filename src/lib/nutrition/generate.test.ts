@@ -151,9 +151,20 @@ describe('generateMealCombos', () => {
   });
 
   it('a favorite protein shows up in the top picks', () => {
-    const fav = { ...ALL, foods: { ...ALL.foods, cod: 'favorite' as const } };
-    expect(meal(ALL).combos.some((c) => ids(c).includes('cod'))).toBe(false);
-    expect(meal(fav).combos.some((c) => ids(c).includes('cod'))).toBe(true);
+    // Pick a protein that is not among the unfavored top picks, then favor it.
+    const base = meal(ALL).combos;
+    const used = new Set(base.flatMap((c) => ids(c)));
+    const candidate = FOODS.find(
+      (f) => f.category === 'protein' && !used.has(f.id),
+    )!;
+    const fav = {
+      ...ALL,
+      foods: { ...ALL.foods, [candidate.id]: 'favorite' as const },
+    };
+    expect(base.some((c) => ids(c).includes(candidate.id))).toBe(false);
+    expect(meal(fav).combos.some((c) => ids(c).includes(candidate.id))).toBe(
+      true,
+    );
   });
 
   it('runs one meal with everything selected in under a second', () => {
@@ -290,10 +301,10 @@ describe('generateDayPlan', () => {
       expect(day.flags.filter((f) => f !== 'HIGH_PROTEIN')).toEqual([]);
   });
 
-  it('keeps day sodium between 1,500 and 2,000 mg', () => {
+  it('keeps day sodium within the 2,000 mg cap, without chasing a minimum, and never raises LOW_SODIUM from intake', () => {
     for (const day of examplePlans) {
-      expect(day.totals.sodium).toBeGreaterThanOrEqual(1500);
       expect(day.totals.sodium).toBeLessThanOrEqual(2000);
+      expect(day.flags).not.toContain('LOW_SODIUM');
     }
   });
 
@@ -302,6 +313,7 @@ describe('generateDayPlan', () => {
       for (const s of day.shortfalls) {
         expect(s.amount).toBeLessThan(s.reference);
         expect(s.ratio).toBeCloseTo(s.amount / s.reference, 9);
+        expect(s.hardFromFood).toBe(s.nutrient === 'vitaminD');
       }
       const listed = new Set(day.shortfalls.map((s) => s.nutrient));
       for (const k of Object.keys(day.micros) as (keyof typeof day.micros)[])

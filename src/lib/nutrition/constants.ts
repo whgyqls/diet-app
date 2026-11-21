@@ -98,10 +98,8 @@ export const CHOLESTEROL_DAY_MAX_MG = 300;
 
 /** Fiber above this per day gets a weak penalty (split across meals by ratio). */
 export const FIBER_DAY_SOFT_MAX = 50;
-/** WHO recommendation. Users may only set it lower. */
+/** WHO recommendation. The default diet only keeps below it; users may set it lower. */
 export const SODIUM_DAY_MAX = 2000;
-/** KDRI 2020 sodium adequate intake (19-64). The default diet aims for 1,500-2,000 mg. */
-export const SODIUM_DAY_MIN = 1500;
 
 // ---- KDRI 2020 reference intakes by sex and age (PLAN.md 4.1-3) ---------------
 // Source: Ministry of Health and Welfare press release 2020-12-23, attachment 5 (2020 KDRI summary table),
@@ -227,6 +225,11 @@ export const AGE_BANDS: readonly { from: number; band: AgeBand }[] = [
 ];
 /** A micronutrient is listed as short when the day total is below this share of its KDRI value. */
 export const MICRO_SHORTFALL_RATIO = 1.0;
+/**
+ * Micronutrients that are hard to cover from food alone (vitamin D: sun and fortified foods). A shortfall is
+ * still listed, with a note, but it is not penalized in the score.
+ */
+export const MICROS_HARD_FROM_FOOD: readonly MicroKey[] = ['vitaminD'];
 
 export const MEAL_SPLIT: Record<
   MealsPerDay,
@@ -246,7 +249,7 @@ export const MEAL_SPLIT: Record<
 // ---- Health flags (PLAN.md 4.4) ---------------------------------------------
 
 export const HIGH_PROTEIN_WARN_PER_KG = 1.6;
-/** KDRI 2020 sodium adequate intake. */
+/** KDRI 2020 sodium adequate intake. LOW_SODIUM fires only when the user *sets* the sodium cap below it. */
 export const LOW_SODIUM_WARN_MG = 1500;
 export const LOW_NET_CARB_WARN_G = 50;
 /** Day fat above this share of kcal raises HIGH_FAT_MOSTLY_UNSAT (when saturated fat is under its cap). */
@@ -302,8 +305,6 @@ export const MAX_OIL_KINDS_PER_MEAL = 1;
 
 /** Kinds of salty seasoning (salt, soy sauce, doenjang, ...) per meal. Free (no-sodium) ones come first. */
 export const MAX_SALTY_SEASONINGS_PER_MEAL = 1;
-/** Exception: when one kind cannot bring a meal up to its share of the 1,500 mg sodium minimum. */
-export const MAX_SALTY_SEASONINGS_BELOW_SODIUM_MIN = 2;
 /** Salty seasonings may use only this share of the meal's seasoning sodium budget. */
 export const SEASONING_SODIUM_BUDGET_RATIO = 0.6;
 

@@ -60,6 +60,14 @@ describe('scoreCombo', () => {
     );
   });
 
+  it('judges total carbs on the kcal actually eaten: the same grams are over the cap in a smaller meal', () => {
+    const grams = LUNCH.totalCarbMax; // exactly 45% when the target kcal is eaten
+    expect(score({ carbs: grams }).carbOver).toBe(0);
+    expect(
+      score({ carbs: grams, kcal: LUNCH.kcal * 0.8 }).carbOver,
+    ).toBeGreaterThan(0);
+  });
+
   it('penalizes fiber below the minimum, and weakly above the soft max', () => {
     expect(score({ fiber: LUNCH.fiberMin - 2 }).fiberUnder).toBeGreaterThan(0);
     expect(score({ fiber: LUNCH.fiberSoftMax }).fiberOver).toBe(0);
@@ -120,6 +128,15 @@ describe('scoreCombo', () => {
       score({ fiber: LUNCH.fiberMin * 0.5 }).fiberUnder,
     );
     expect(score({}).microUnder).toBe(0);
+  });
+
+  it('does not penalize a vitamin D shortfall (hard to cover from food), but still penalizes the others', () => {
+    const noD = { ...LUNCH.micros, vitaminD: 0 };
+    expect(scoreCombo(ideal, LUNCH, 0, noD).microUnder).toBe(0);
+    const noCalcium = { ...LUNCH.micros, calcium: 0 };
+    expect(scoreCombo(ideal, LUNCH, 0, noCalcium).microUnder).toBeGreaterThan(
+      0,
+    );
   });
 
   it('gives a bonus per favorite, so a favorite can outrank a slightly closer combo', () => {

@@ -31,7 +31,6 @@ describe('calcDayTargets (automatic)', () => {
     expect(targets.carbTopUp).toBe(true);
     expect(targets.satFatTarget).toBeCloseTo((targets.kcal * 0.07) / 9, 6);
     expect(targets.cholesterolMax).toBe(300);
-    expect(targets.sodiumMin).toBe(1500);
     // KDRI 2020 woman 30-49
     expect(targets.fiberMin).toBe(20);
     expect(targets.micros).toEqual({
@@ -190,10 +189,10 @@ describe('KDRI 2020 by age', () => {
     expect(t.micros.calcium).toBe(800);
   });
 
-  it('keeps sodium min no higher than a user-lowered sodium max', () => {
-    expect(
-      calcDayTargets(loseF, REF_YEAR, { sodiumMax: 1400 }).targets.sodiumMin,
-    ).toBe(1400);
+  it('has a default sodium cap of 2,000 mg and raises no LOW_SODIUM flag for it', () => {
+    const { targets, flags } = calcDayTargets(loseF, REF_YEAR);
+    expect(targets.sodiumMax).toBe(2000);
+    expect(flags).not.toContain('LOW_SODIUM');
   });
 });
 
@@ -248,7 +247,6 @@ describe('calcMealTargets', () => {
     expect(sum((m) => m.totalCarbMax)).toBeCloseTo(day.totalCarbMax, 6);
     expect(sum((m) => m.totalCarbMin)).toBeCloseTo(day.totalCarbMin, 6);
     expect(sum((m) => m.cholesterolMax)).toBeCloseTo(day.cholesterolMax, 6);
-    expect(sum((m) => m.sodiumMin)).toBeCloseTo(day.sodiumMin, 6);
     expect(sum((m) => m.micros.calcium)).toBeCloseTo(day.micros.calcium, 6);
     expect(sum((m) => m.sodiumMax)).toBeCloseTo(day.sodiumMax, 6);
     expect(meals[0].kcal).toBeCloseTo(day.kcal * 0.3, 6);

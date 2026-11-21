@@ -73,7 +73,6 @@ export const LUNCH: MealTargets = {
   cholesterolMax: 105,
   fiberMin: 10.5,
   fiberSoftMax: 17.5,
-  sodiumMin: 525,
   sodiumMax: 700,
   // KDRI 2020 woman 30-49 x 0.35
   micros: {

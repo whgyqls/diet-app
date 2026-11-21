@@ -313,19 +313,46 @@ describe('calcPortions: default-diet steps 5-6 and extra totals', () => {
     kcal: 900,
     protein: { base: 30, max: 80 },
     fat: { stage1: 10, stage2: 10, stage3: 10 },
-    netCarbMax: 30,
-    totalCarbMax: 80,
+    netCarbMax: 15, // small base ratio so step 6 has room to add
+    totalCarbMax: 101.25, // 45% of the 900 kcal target
   };
 
-  it('step 6 grows a whole grain or legume up to the 45% total-carb cap', () => {
+  it('step 6 grows a whole grain or legume while total carbs stay within 45% of the kcal eaten', () => {
     for (const c of ['brown-rice', 'lentil']) {
       const r = solve(
         { protein: food('cod'), carb: food(c), fibers: [food('cabbage')] },
         roomy,
       );
       expect(r.kcalByStep.carbsTopUp, c).toBeGreaterThan(0);
-      expect(r.totals.carbs).toBeLessThanOrEqual(80);
+      expect((r.totals.carbs * 4) / r.totals.kcal, c).toBeLessThanOrEqual(
+        0.45 + 1e-9,
+      );
     }
+  });
+
+  it('the carb cap follows the kcal eaten, not the target: more kcal from other steps leave more carb room', () => {
+    const lean = solve(
+      {
+        protein: food('cod'),
+        carb: food('brown-rice'),
+        fibers: [food('cabbage')],
+      },
+      roomy,
+    );
+    const withFat = solve(
+      {
+        protein: food('cod'),
+        carb: food('brown-rice'),
+        fibers: [food('cabbage')],
+        fat: food('almond'),
+      },
+      roomy,
+      ['olive-oil'],
+    );
+    expect(withFat.totals.kcal).toBeGreaterThan(lean.totals.kcal);
+    expect(grams(withFat, 'brown-rice')!).toBeGreaterThan(
+      grams(lean, 'brown-rice')!,
+    );
   });
 
   it('step 6 never grows refined carbs (white rice, potato)', () => {

@@ -7,7 +7,6 @@ import type {
   SeasoningUse,
 } from '@/types/nutrition';
 import {
-  MAX_SALTY_SEASONINGS_BELOW_SODIUM_MIN,
   MAX_SALTY_SEASONINGS_PER_MEAL,
   SEASONING_SODIUM_BUDGET_RATIO,
 } from './constants';
@@ -24,17 +23,13 @@ type Option = {
   key: string;
 };
 
-function options(
-  salty: Seasoning[],
-  prefs: Selection['seasonings'],
-  maxKinds: number,
-): Option[] {
+function options(salty: Seasoning[], prefs: Selection['seasonings']): Option[] {
   const singles: SeasoningUse[][] = [];
   for (const s of salty)
     for (let u = 1; u <= s.maxUnitsPerMeal; u++)
       singles.push([{ seasoning: s, units: u }]);
-  const sets: SeasoningUse[][] = maxKinds >= 1 ? [...singles] : [];
-  if (maxKinds >= 2) {
+  const sets: SeasoningUse[][] = [...singles];
+  if (MAX_SALTY_SEASONINGS_PER_MEAL >= 2) {
     for (let i = 0; i < singles.length; i++)
       for (let j = i + 1; j < singles.length; j++)
         if (singles[i][0].seasoning !== singles[j][0].seasoning)
@@ -52,9 +47,8 @@ function options(
 /**
  * Prepares the user's seasoning options once; the returned function suggests seasonings for one meal.
  * Free (no-sodium) seasonings come first. Budget = meal sodium cap - sodium already in the food (and oils);
- * salty seasonings may use SEASONING_SODIUM_BUDGET_RATIO of it, or more when the meal would stay below its
- * share of the sodium minimum (1,500 mg/day). At most MAX_SALTY_SEASONINGS_PER_MEAL kind; only when one kind
- * cannot bring the meal up to its sodium minimum, up to MAX_SALTY_SEASONINGS_BELOW_SODIUM_MIN kinds.
+ * salty seasonings (at most MAX_SALTY_SEASONINGS_PER_MEAL kind) may use SEASONING_SODIUM_BUDGET_RATIO of it.
+ * The default diet only keeps below the cap; it does not try to reach a sodium minimum.
  * Among salty options that fit: favorites first, then the most sodium allowed, fewer units, id.
  */
 export function seasoningPlanner(
@@ -63,48 +57,19 @@ export function seasoningPlanner(
 ): (foodSodium: number, t: MealTargets) => SeasoningResult {
   const selected = seasonings.filter((s) => prefs[s.id]);
   const free = selected.filter((s) => s.free);
-  const rank = (maxKinds: number) =>
-    options(selected.filter(isSalty), prefs, maxKinds).sort(
-      (a, b) =>
-        b.favorites - a.favorites ||
-        b.sodium - a.sodium ||
-        a.units - b.units ||
-        a.key.localeCompare(b.key),
-    );
-  const ranked = rank(MAX_SALTY_SEASONINGS_PER_MEAL);
-  const rankedBelowMin = rank(MAX_SALTY_SEASONINGS_BELOW_SODIUM_MIN);
+  const ranked = options(selected.filter(isSalty), prefs).sort(
+    (a, b) =>
+      b.favorites - a.favorites ||
+      b.sodium - a.sodium ||
+      a.units - b.units ||
+      a.key.localeCompare(b.key),
+  );
   return (foodSodium, t) => {
     const budget = t.sodiumMax - foodSodium;
-    // Normally 60% of the budget; reported `allowed` also covers what reaching the sodium minimum takes.
-    const allowed = Math.min(
-      Math.max(0, budget),
-      Math.max(
-        Math.max(0, budget) * SEASONING_SODIUM_BUDGET_RATIO,
-        t.sodiumMin - foodSodium,
-      ),
-    );
+    const allowed = Math.max(0, budget) * SEASONING_SODIUM_BUDGET_RATIO;
     if (ranked.length === 0)
       return { budget, allowed, picks: [], free, reason: 'NO_SALTY_SELECTED' };
-    let best = ranked.find((o) => o.sodium <= allowed);
-    if (foodSodium + (best?.sodium ?? 0) < t.sodiumMin) {
-      // Below the sodium minimum: take the smallest option (1-2 kinds, within the whole budget) that reaches it,
-      // favorites first; if none reaches it, the largest that fits.
-      const fits = rankedBelowMin.filter(
-        (o) => o.sodium <= Math.max(0, budget),
-      );
-      const need = t.sodiumMin - foodSodium;
-      const reaching = fits
-        .filter((o) => o.sodium >= need)
-        .sort(
-          (a, b) =>
-            b.favorites - a.favorites ||
-            a.sodium - b.sodium ||
-            a.units - b.units ||
-            a.key.localeCompare(b.key),
-        );
-      const more = reaching[0] ?? fits[0];
-      if (more && (!best || more.sodium > best.sodium)) best = more;
-    }
+    const best = ranked.find((o) => o.sodium <= allowed);
     if (!best)
       return { budget, allowed, picks: [], free, reason: 'NO_SODIUM_BUDGET' };
     return { budget, allowed, picks: best.uses, free };

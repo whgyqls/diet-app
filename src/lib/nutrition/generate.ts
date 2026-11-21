@@ -32,6 +32,7 @@ import {
   MMR_PENALTY,
   MICRO_KEYS,
   MICRO_SHORTFALL_RATIO,
+  MICROS_HARD_FROM_FOOD,
   MMR_POOL_SIZE,
   PROTEIN_GROUPS,
   type ProteinGroup,
@@ -45,7 +46,7 @@ import {
   calcPortions,
   seasoningNutrients,
 } from './portions';
-import { scoreCombo } from './scoring';
+import { carbCapGrams, scoreCombo } from './scoring';
 import { seasoningPlanner } from './seasoning';
 import { calcDayTargets, calcMealTargets } from './targets';
 
@@ -379,15 +380,16 @@ function betterDay(a: DayPick, b: DayPick | undefined): boolean {
 }
 
 /**
- * Day-level limits as relative excess (0 when met): total carbs within [100 g, 45% + CARB_TOLERANCE_G],
- * saturated fat < 10%, fat within the diet's cap, cholesterol <= 300 mg. Fat shares use the kcal eaten.
+ * Day-level limits as relative excess (0 when met): total carbs within [100 g, 45% of the kcal eaten
+ * + CARB_TOLERANCE_G], saturated fat < 10%, fat within the diet's cap, cholesterol <= 300 mg.
+ * Carb, fat and saturated-fat shares all use the kcal actually eaten.
  */
 function dayLimitExcess(day: NutrientTotals, t: DayTargets): number[] {
   const fatCapShare = (t.fat.stage3 * KCAL_PER_GRAM.fat) / t.kcal;
   const fatKcal = (g: number) => g * KCAL_PER_GRAM.fat;
+  const carbCap = carbCapGrams(t, day.kcal);
   return [
-    Math.max(0, day.carbs - t.totalCarbMax - CARB_TOLERANCE_G) /
-      t.totalCarbMax +
+    Math.max(0, day.carbs - carbCap - CARB_TOLERANCE_G) / carbCap +
       Math.max(0, t.totalCarbMin - day.carbs) / t.totalCarbMin,
     Math.max(0, fatKcal(day.satFat) / day.kcal - SAT_FAT_KCAL_RATIO_MAX) /
       SAT_FAT_KCAL_RATIO_MAX,
@@ -441,7 +443,9 @@ function dayOptions(
   const top = options.slice(0, COMBOS_PER_MEAL);
   for (const g of Object.keys(PROTEIN_GROUPS) as ProteinGroup[]) {
     const inGroup = candidates.filter((c) => comboProteinGroup(c) === g);
-    const lowCarb = inGroup.filter((c) => c.totals.carbs <= t.totalCarbMax);
+    const lowCarb = inGroup.filter(
+      (c) => c.totals.carbs <= carbCapGrams(t, c.totals.kcal),
+    );
     for (const list of [inGroup, lowCarb]) {
       options.push(
         ...list
@@ -522,6 +526,7 @@ export function generateDayPlan(req: DayRequest): DayPlan {
     amount: micros[k],
     reference: targets.micros[k],
     ratio: micros[k] / targets.micros[k],
+    hardFromFood: MICROS_HARD_FROM_FOOD.includes(k),
   }));
   return {
     targets,

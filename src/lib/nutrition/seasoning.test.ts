@@ -33,12 +33,7 @@ const allOk: Selection['seasonings'] = {
   free: 'ok',
   oil: 'ok',
 };
-// sodiumMin 0 unless a test is about the minimum
-const t = (sodiumMax: number, sodiumMin = 0) => ({
-  ...LUNCH,
-  sodiumMax,
-  sodiumMin,
-});
+const t = (sodiumMax: number) => ({ ...LUNCH, sodiumMax });
 const summary = (r: ReturnType<typeof recommendSeasonings>) =>
   r.picks.map((p) => `${p.seasoning.id}x${p.units}`);
 
@@ -104,25 +99,16 @@ describe('recommendSeasonings', () => {
     expect(recommendSeasonings(0, t(700), ALL, {}).free).toEqual([]);
   });
 
-  it('below the sodium minimum, takes the smallest option that reaches it, a second kind if needed', () => {
-    // food 0, min 240, max 700: a x2 = 200 falls short; a x1 + b x1 = 250 is the smallest that reaches 240
-    expect(summary(recommendSeasonings(0, t(700, 240), ALL, allOk))).toEqual([
-      'ax1',
-      'bx1',
-    ]);
-    // one kind already reaches the minimum: stays at one kind
-    expect(summary(recommendSeasonings(0, t(700, 100), ALL, allOk))).toEqual([
-      'ax2',
-    ]);
-  });
-
-  it('never goes past the sodium cap to reach the minimum', () => {
-    const r = recommendSeasonings(600, t(700, 1000), ALL, allOk);
+  it('keeps to one salty seasoning and 60% of the budget even when more would fit and the meal is low in sodium', () => {
+    // budget 700: a x2 (200) + b x1 (150) would fit, but only one kind and at most 420 mg are allowed
+    const r = recommendSeasonings(0, t(700), ALL, allOk);
+    expect(r.allowed).toBeCloseTo(420, 9);
+    expect(r.picks).toHaveLength(1);
     const used = r.picks.reduce(
       (a, p) => a + p.seasoning.perUnit.sodium * p.units,
       0,
     );
-    expect(used).toBeLessThanOrEqual(100);
+    expect(used).toBeLessThanOrEqual(420);
   });
 
   it('stays within the budget and per-seasoning limits on real data', () => {

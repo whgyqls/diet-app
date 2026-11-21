@@ -35,7 +35,6 @@ import {
   SAT_FAT_KCAL_RATIO_MAX,
   SAT_FAT_KCAL_RATIO_TARGET,
   SODIUM_DAY_MAX,
-  SODIUM_DAY_MIN,
   TOTAL_CARB_DAY_MIN_G,
   TOTAL_CARB_KCAL_RATIO_MAX,
 } from './constants';
@@ -154,7 +153,6 @@ export function calcDayTargets(
       cholesterolMax: CHOLESTEROL_DAY_MAX_MG,
       fiberMin: kdri.fiber,
       fiberSoftMax: FIBER_DAY_SOFT_MAX,
-      sodiumMin: Math.min(SODIUM_DAY_MIN, sodiumMax),
       sodiumMax,
       micros: Object.fromEntries(MICRO_KEYS.map((k) => [k, kdri[k]])) as Record<
         MicroKey,
@@ -189,7 +187,6 @@ export function calcMealTargets(
     cholesterolMax: day.cholesterolMax * ratio,
     fiberMin: day.fiberMin * ratio,
     fiberSoftMax: day.fiberSoftMax * ratio,
-    sodiumMin: day.sodiumMin * ratio,
     sodiumMax: day.sodiumMax * ratio,
     micros: Object.fromEntries(
       MICRO_KEYS.map((k) => [k, day.micros[k] * ratio]),
