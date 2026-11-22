@@ -26,7 +26,7 @@ export function ComboCarousel({
         ref={ref}
         onScroll={onScroll}
         aria-label="추천 조합 (좌우로 넘겨 보기)"
-        className="flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2"
+        className="relative flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2"
       >
         {cards.map((c, i) => (
           <li key={c.id} className="w-[85%] max-w-sm shrink-0 snap-center">
