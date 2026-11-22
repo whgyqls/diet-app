@@ -1,4 +1,5 @@
-import { HomeActions } from '@/components/HomeActions';
+import { Suspense } from 'react';
+import { HomeAuth } from '@/components/auth/HomeAuth';
 
 export default function Home() {
   return (
@@ -8,7 +9,15 @@ export default function Home() {
         먹을 수 있는 재료를 고르면, 단백질 + 탄수화물 + 식이섬유 + 지방원 조합과
         양념 권장량을 끼니별로 추천해요.
       </p>
-      <HomeActions />
+      <Suspense
+        fallback={
+          <p role="status" className="mt-6 text-sm">
+            불러오는 중…
+          </p>
+        }
+      >
+        <HomeAuth />
+      </Suspense>
     </main>
   );
 }

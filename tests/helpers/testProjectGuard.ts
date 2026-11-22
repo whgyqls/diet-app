@@ -90,7 +90,8 @@ export function checkTestProject(input: {
   };
 }
 
-const ROOT = path.resolve(import.meta.dirname, '../..');
+// The project root. Tests and configs run from it (npm scripts); import.meta is not available in Playwright's CJS loader.
+const ROOT = process.cwd();
 const read = (name: string) => {
   const file = path.join(ROOT, name);
   return existsSync(file) ? readFileSync(file, 'utf8') : null;

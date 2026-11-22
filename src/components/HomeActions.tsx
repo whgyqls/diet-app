@@ -20,6 +20,12 @@ export function HomeActions() {
         시작하기
       </Link>
       {hydrated && <Continue />}
+      <Link
+        href="/settings"
+        className="flex min-h-11 items-center justify-center text-sm text-neutral-700 underline dark:text-neutral-300"
+      >
+        설정 · 로그아웃
+      </Link>
     </div>
   );
 }
