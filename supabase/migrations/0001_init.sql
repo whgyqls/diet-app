@@ -167,10 +167,16 @@ $$;
 
 revoke all on function public.set_food_prefs(jsonb, jsonb) from public, anon, authenticated;
 grant execute on function public.set_food_prefs(jsonb, jsonb) to authenticated;
+-- Explicit, because the project does not grant API access to new objects automatically. A service_role
+-- call has no user, so auth.uid() is null and the function raises 'not authenticated'.
+grant execute on function public.set_food_prefs(jsonb, jsonb) to service_role;
 
 -- -------------------------------------------------------------------------------------------------
--- Privileges. Start from nothing (Supabase's default privileges grant a lot, TRUNCATE included, and
--- TRUNCATE ignores RLS), then grant only what the app uses. service_role keeps its own access.
+-- Privileges. Start from nothing (Supabase's default privileges may grant a lot, TRUNCATE included, and
+-- TRUNCATE ignores RLS), then grant only what the app uses.
+-- service_role (server only: account deletion, test seeding) gets the same four commands on every table,
+-- granted explicitly because this project does not grant API access to new tables automatically.
+-- It bypasses RLS, so it is never used from the browser.
 -- -------------------------------------------------------------------------------------------------
 
 revoke all on table public.profiles from anon, authenticated;
@@ -182,6 +188,17 @@ grant select, insert, update, delete on table public.profiles to authenticated;
 grant select on table public.food_prefs to authenticated;
 grant select, insert, update, delete on table public.ingredient_kits to authenticated;
 grant select, insert, delete on table public.saved_combos to authenticated;
+
+-- Same starting point in every project, whatever its default privileges (no TRUNCATE for service_role).
+revoke all on table public.profiles from service_role;
+revoke all on table public.food_prefs from service_role;
+revoke all on table public.ingredient_kits from service_role;
+revoke all on table public.saved_combos from service_role;
+
+grant select, insert, update, delete on table public.profiles to service_role;
+grant select, insert, update, delete on table public.food_prefs to service_role;
+grant select, insert, update, delete on table public.ingredient_kits to service_role;
+grant select, insert, update, delete on table public.saved_combos to service_role;
 
 -- -------------------------------------------------------------------------------------------------
 -- Row level security. (select auth.uid()) is evaluated once per statement instead of once per row.
