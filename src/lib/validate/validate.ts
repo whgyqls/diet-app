@@ -31,6 +31,9 @@ const STYLE_SET: Record<DietStyle, true> = {
   pescatarian: true,
   lactoOvo: true,
 };
+/** Every DietStyle. supabase/migrations must list exactly these (checked by migrationStyles.test.ts). */
+export const DIET_STYLES = Object.keys(STYLE_SET) as DietStyle[];
+
 const MEAL_SET: Record<MealType, true> = {
   breakfast: true,
   lunch: true,

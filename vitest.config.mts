@@ -7,7 +7,8 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['src/**/*.test.ts'],
+    // tests/helpers: pure helpers of the test setup (e.g. the test project guard)
+    include: ['src/**/*.test.ts', 'tests/helpers/**/*.test.ts'],
     // A full day plan with everything selected takes a few seconds.
     testTimeout: 60_000,
   },
