@@ -14,8 +14,7 @@ import {
   selectAll,
   toggleItem,
 } from '@/lib/selection/selection';
-import { FOODS, SEASONINGS } from '@/lib/data/load';
-import { OIL_GROUP } from '@/lib/nutrition/constants';
+import { KNOWN_IDS as KNOWN, OIL_IDS } from '@/lib/data/knownIds';
 import { safeLocalStorage, type StateStorage } from './safeStorage';
 
 export type { StateStorage };
@@ -28,20 +27,12 @@ import {
   type IngredientKit,
   type KitApplyMode,
   type KitNameError,
-  type KnownIds,
 } from '@/lib/kits/kits';
 
 export const STORAGE_KEY = 'diet-app-v1';
 export const DEFAULT_STEP = 0;
 /** 2: oils moved from seasonings to foods, ingredient kits added. */
 const STORE_VERSION = 2;
-
-const OIL_IDS = FOODS.filter((f) => f.group === OIL_GROUP).map((f) => f.id);
-const KNOWN: KnownIds = {
-  foods: new Set(FOODS.map((f) => f.id)),
-  seasonings: new Set(SEASONINGS.map((s) => s.id)),
-  oilIds: OIL_IDS,
-};
 
 /** Short unique id; crypto.randomUUID is missing on plain-http LAN addresses (phone testing). */
 const newId = () =>

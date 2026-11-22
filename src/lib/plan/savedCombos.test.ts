@@ -14,7 +14,8 @@ import type { StateStorage } from '@/lib/store/safeStorage';
 import {
   SAVED_STORAGE_KEY,
   comboSignature,
-  createSavedStore,
+  createLocalSavedStore,
+  isSaved,
   snapshotOf,
 } from './savedCombos';
 
@@ -120,72 +121,114 @@ describe('comboSignature', () => {
   });
 });
 
-describe('createSavedStore', () => {
-  it('adds, lists (newest first) and finds by signature', () => {
-    const st = createSavedStore(memory());
+describe('createLocalSavedStore', () => {
+  it('stars (toggle), lists newest first and finds by signature', async () => {
+    const st = createLocalSavedStore(memory());
     expect(st.list()).toEqual([]);
-    expect(st.add(snap(0))).toBe(true);
-    expect(st.add(snap(1))).toBe(true);
+    expect(await st.toggle(snap(0))).toBe('added');
+    expect(await st.toggle(snap(1))).toBe('added');
     expect(st.list().map((s) => s.id)).toEqual(['s1', 's0']);
-    expect(st.has(comboSignature(combos[0]))).toBe(true);
-    expect(st.has('nope')).toBe(false);
+    expect(isSaved(st.list(), comboSignature(combos[0]))).toBe(true);
+    expect(isSaved(st.list(), 'nope')).toBe(false);
   });
 
-  it('refuses the same signature twice', () => {
-    const st = createSavedStore(memory());
-    expect(st.add(snap(0, 'a'))).toBe(true);
-    expect(st.add(snap(0, 'b'))).toBe(false);
+  it('is already updated when the call returns its promise (optimistic)', () => {
+    const st = createLocalSavedStore(memory());
+    void st.toggle(snap(0));
     expect(st.list()).toHaveLength(1);
+    void st.remove('s0');
+    expect(st.list()).toHaveLength(0);
   });
 
-  it('removes by id and by signature', () => {
-    const st = createSavedStore(memory());
-    st.add(snap(0));
-    st.add(snap(1));
-    st.remove('s0');
-    expect(st.list().map((s) => s.id)).toEqual(['s1']);
-    st.removeBySignature(comboSignature(combos[1]));
+  it('refuses the same signature twice: toggle removes it, addMany skips it', async () => {
+    const st = createLocalSavedStore(memory());
+    expect(await st.toggle(snap(0, 'a'))).toBe('added');
+    expect(await st.addMany([snap(0, 'b')])).toEqual([]);
+    expect(st.list().map((s) => s.id)).toEqual(['a']);
+    expect(await st.toggle(snap(0, 'c'))).toBe('removed');
     expect(st.list()).toEqual([]);
-    expect(() => st.remove('missing')).not.toThrow();
   });
 
-  it('survives a "reload": a new store on the same storage sees the snapshots', () => {
+  it('removes by id and by signature (the star)', async () => {
+    const st = createLocalSavedStore(memory());
+    await st.toggle(snap(0));
+    await st.toggle(snap(1));
+    await st.remove('s0');
+    expect(st.list().map((s) => s.id)).toEqual(['s1']);
+    await st.toggle(snap(1, 'other-id'));
+    expect(st.list()).toEqual([]);
+    await expect(st.remove('missing')).resolves.toBeUndefined();
+  });
+
+  it('addMany adds only unseen signatures (also inside the list) and returns the ids it added', async () => {
+    const st = createLocalSavedStore(memory());
+    await st.toggle(snap(0, 'keep'));
+    const ids = await st.addMany([
+      snap(0, 'dup-of-existing'),
+      snap(1, 'n1'),
+      snap(1, 'dup-in-list'),
+      snap(2, 'n2'),
+    ]);
+    expect(ids).toEqual(['n1', 'n2']);
+    expect(st.list().map((s) => s.id)).toEqual(['n1', 'n2', 'keep']);
+    await st.addMany([]);
+    expect(st.list()).toHaveLength(3);
+  });
+
+  it('survives a "reload": a new store on the same storage sees the snapshots', async () => {
     const storage = memory();
-    createSavedStore(storage).add(snap(2));
-    const again = createSavedStore(storage);
+    await createLocalSavedStore(storage).toggle(snap(2));
+    const again = createLocalSavedStore(storage);
     expect(again.list()).toHaveLength(1);
     expect(again.list()[0].items).toEqual(snap(2).items);
   });
 
-  it('keeps the list reference stable until something changes (for useSyncExternalStore)', () => {
-    const st = createSavedStore(memory());
-    st.add(snap(0));
+  it('keeps the list reference stable until something changes (for useSyncExternalStore)', async () => {
+    const st = createLocalSavedStore(memory());
+    await st.toggle(snap(0));
     const a = st.list();
     expect(st.list()).toBe(a);
-    st.add(snap(1));
+    await st.toggle(snap(1));
     expect(st.list()).not.toBe(a);
   });
 
-  it('notifies subscribers on add and remove, and not after unsubscribe', () => {
-    const st = createSavedStore(memory());
+  it('notifies subscribers on every change, and not after unsubscribe', async () => {
+    const st = createLocalSavedStore(memory());
     const fn = vi.fn();
     const off = st.subscribe(fn);
-    st.add(snap(0));
-    st.remove('s0');
-    expect(fn).toHaveBeenCalledTimes(2);
+    await st.toggle(snap(0));
+    await st.remove('s0');
+    await st.addMany([snap(3)]);
+    expect(fn).toHaveBeenCalledTimes(3);
     off();
-    st.add(snap(1));
-    expect(fn).toHaveBeenCalledTimes(2);
+    await st.toggle(snap(1));
+    expect(fn).toHaveBeenCalledTimes(3);
   });
 
-  it('does not notify when nothing changed (duplicate add, unknown remove)', () => {
-    const st = createSavedStore(memory());
-    st.add(snap(0));
+  it('does not notify when nothing changed (unknown remove, addMany of known signatures)', async () => {
+    const st = createLocalSavedStore(memory());
+    await st.toggle(snap(0));
     const fn = vi.fn();
     st.subscribe(fn);
-    st.add(snap(0, 'other'));
-    st.remove('missing');
+    await st.addMany([snap(0, 'other')]);
+    await st.remove('missing');
     expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('is always ready, and refresh reads the storage again', async () => {
+    const storage = memory();
+    const st = createLocalSavedStore(storage);
+    expect(st.status()).toBe('ready');
+    await st.toggle(snap(0));
+    storage.setItem(
+      SAVED_STORAGE_KEY,
+      JSON.stringify({ version: 1, items: [snap(1)] }),
+    );
+    const fn = vi.fn();
+    st.subscribe(fn);
+    await st.refresh();
+    expect(st.list().map((s) => s.id)).toEqual(['s1']);
+    expect(fn).toHaveBeenCalledTimes(1);
   });
 
   it('ignores broken stored data', () => {
@@ -197,11 +240,11 @@ describe('createSavedStore', () => {
     ]) {
       const storage = memory();
       storage.setItem(SAVED_STORAGE_KEY, bad);
-      expect(createSavedStore(storage).list()).toEqual([]);
+      expect(createLocalSavedStore(storage).list()).toEqual([]);
     }
   });
 
-  it('works in memory when storage throws (private mode, quota)', () => {
+  it('works in memory when storage throws (private mode, quota)', async () => {
     const broken: StateStorage = {
       getItem: () => {
         throw new Error('blocked');
@@ -213,10 +256,10 @@ describe('createSavedStore', () => {
         throw new Error('blocked');
       },
     };
-    const st = createSavedStore(broken);
-    expect(() => st.add(snap(0))).not.toThrow();
+    const st = createLocalSavedStore(broken);
+    await expect(st.toggle(snap(0))).resolves.toBe('added');
     expect(st.list()).toHaveLength(1);
-    expect(() => st.remove('s0')).not.toThrow();
+    await expect(st.remove('s0')).resolves.toBeUndefined();
     expect(st.list()).toEqual([]);
   });
 });

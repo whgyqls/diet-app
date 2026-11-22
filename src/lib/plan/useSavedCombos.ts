@@ -1,19 +1,22 @@
 'use client';
-// Subscribes a screen to the saved combos. Only list/remove/subscribe are used, so Phase 5 only has to
-// provide another SavedStore implementation (the server one) and pass it here or change the default.
+// Subscribes a screen to the saved combos: the list, the load status and the actions.
+// Any SavedStore works (localStorage now, the Supabase one after Phase 5d).
 import { useSyncExternalStore } from 'react';
 import { savedStore, type SavedCombo, type SavedStore } from './savedCombos';
-
-export type SavedListSource = Pick<SavedStore, 'list' | 'remove' | 'subscribe'>;
 
 const NO_SAVED: SavedCombo[] = [];
 const never = () => () => {};
 
-export function useSavedCombos(store: SavedListSource = savedStore) {
+export function useSavedCombos(store: SavedStore = savedStore) {
   const list = useSyncExternalStore(
     store.subscribe,
     store.list,
     () => NO_SAVED,
+  );
+  const status = useSyncExternalStore(
+    store.subscribe,
+    store.status,
+    () => 'loading' as const,
   );
   // false while rendering on the server and during hydration, so "empty" never flashes before the list.
   const ready = useSyncExternalStore(
@@ -21,5 +24,12 @@ export function useSavedCombos(store: SavedListSource = savedStore) {
     () => true,
     () => false,
   );
-  return { list, ready, remove: store.remove };
+  return {
+    list,
+    status,
+    ready,
+    remove: store.remove,
+    toggle: store.toggle,
+    refresh: store.refresh,
+  };
 }

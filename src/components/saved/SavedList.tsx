@@ -15,14 +15,27 @@ const linkClass =
   'inline-flex min-h-11 items-center justify-center rounded-lg bg-emerald-600 px-4 font-semibold text-white';
 
 export function SavedList() {
-  const { list, ready, remove } = useSavedCombos();
+  const { list, status, ready, remove, refresh } = useSavedCombos();
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
-  if (!ready)
+  if (!ready || status === 'loading')
     return (
       <p role="status" className="p-4">
         불러오는 중…
       </p>
+    );
+  if (status === 'error')
+    return (
+      <div className="space-y-3 p-4" role="alert">
+        <p className="font-medium">저장한 조합을 불러오지 못했어요</p>
+        <button
+          type="button"
+          onClick={() => void refresh()}
+          className={linkClass}
+        >
+          다시 시도
+        </button>
+      </div>
     );
   if (list.length === 0)
     return (
@@ -56,7 +69,8 @@ export function SavedList() {
                   onAskDelete={() => setConfirmId(s.id)}
                   onCancel={() => setConfirmId(null)}
                   onDelete={() => {
-                    remove(s.id);
+                    // Rolled back by the store when it fails (the notice for that comes with 5d).
+                    void remove(s.id).catch(() => {});
                     setConfirmId(null);
                   }}
                 />

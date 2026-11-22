@@ -25,6 +25,23 @@ export function parseProfile(draft: Partial<Profile>): Profile | undefined {
   return r.success ? r.data : undefined;
 }
 
+/**
+ * Untrusted input (server row, old localStorage) -> the fields that are valid on their own.
+ * A bad field is dropped, the others stay, so the onboarding form can ask for just what is missing.
+ */
+export function sanitizePartialProfile(raw: unknown): Partial<Profile> {
+  if (typeof raw !== 'object' || raw === null) return {};
+  const src = raw as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(profileSchema.shape) as Array<
+    keyof typeof profileSchema.shape
+  >) {
+    const r = profileSchema.shape[key].safeParse(src[key]);
+    if (r.success) out[key] = r.data;
+  }
+  return out as Partial<Profile>;
+}
+
 /** Advanced form text fields -> overrides. Empty or out-of-range fields are ignored. */
 export type AdvancedDraft = {
   sodiumMax: string;

@@ -9,7 +9,7 @@ import {
   planReducer,
   rerollRequestOf,
 } from '@/lib/plan/planState';
-import { comboSignature, savedStore, snapshotOf } from '@/lib/plan/savedCombos';
+import { comboSignature, isSaved, snapshotOf } from '@/lib/plan/savedCombos';
 import { parseProfile } from '@/lib/profile';
 import {
   requestFingerprint,
@@ -38,19 +38,14 @@ const newId = () =>
 
 type Combo = Parameters<typeof comboSignature>[0];
 
-/** Star toggle. A module-level function (not created while rendering): it reads the clock. */
-function toggleSaved(combo: Combo, mealType: MealType, fingerprint: string) {
-  const sig = comboSignature(combo);
-  if (savedStore.has(sig)) savedStore.removeBySignature(sig);
-  else
-    savedStore.add(
-      snapshotOf(combo, {
-        id: newId(),
-        mealType,
-        requestFingerprint: fingerprint,
-        savedAt: Date.now(),
-      }),
-    );
+/** Snapshot for the star. A module-level function (not created while rendering): it reads the clock. */
+function snapshotFor(combo: Combo, mealType: MealType, fingerprint: string) {
+  return snapshotOf(combo, {
+    id: newId(),
+    mealType,
+    requestFingerprint: fingerprint,
+    savedAt: Date.now(),
+  });
 }
 
 const linkClass =
@@ -134,7 +129,7 @@ function Plan() {
     onMealError: (meal) =>
       dispatch({ type: 'rerollFailed', meal, error: true }),
   });
-  const { list: saved } = useSavedCombos();
+  const { list: saved, toggle: toggleStar } = useSavedCombos();
   const [swap, setSwap] = useState<{
     meal: MealType;
     cardId: string;
@@ -203,7 +198,6 @@ function Plan() {
 
   const noCombos = state.meals.every((m) => m.cards.length === 0);
   const current = state.meals.find((m) => m.mealType === tab) ?? state.meals[0];
-  const isSaved = (sig: string) => saved.some((x) => x.signature === sig);
   const lockedIds = [
     current.locks.protein,
     current.locks.carb,
@@ -223,8 +217,11 @@ function Plan() {
       otherPicked: req.otherPicked,
     });
   };
+  // The store rolls the star back when saving fails; the "저장하지 못했어요" notice is added with the server store (5d).
   const toggleSave = (combo: Combo) =>
-    toggleSaved(combo, current.mealType, state.fingerprint);
+    void toggleStar(
+      snapshotFor(combo, current.mealType, state.fingerprint),
+    ).catch(() => {});
   const swapMeal = swap
     ? state.meals.find((m) => m.mealType === swap.meal)
     : undefined;
@@ -366,7 +363,7 @@ function Plan() {
                         cardId: card.id,
                       })
                     }
-                    saved={isSaved(comboSignature(card.combo))}
+                    saved={isSaved(saved, comboSignature(card.combo))}
                     onToggleSave={() => toggleSave(card.combo)}
                   />
                 )}
