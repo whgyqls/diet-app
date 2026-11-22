@@ -34,9 +34,12 @@ const combo = (
 });
 
 async function seedSaved(page: Page, items: ReturnType<typeof combo>[]) {
+  // Only when the key is missing: addInitScript also runs on reload and must not undo what the page changed.
   await page.addInitScript(
-    ([key, payload]) =>
-      window.localStorage.setItem(key as string, payload as string),
+    ([key, payload]) => {
+      if (window.localStorage.getItem(key as string) === null)
+        window.localStorage.setItem(key as string, payload as string);
+    },
     [SAVED_KEY, JSON.stringify({ version: 1, items })],
   );
 }

@@ -23,7 +23,9 @@ const FOODS = {
 async function seed(page: Page, state: Record<string, unknown>) {
   await page.addInitScript(
     (payload) => {
-      window.localStorage.setItem('diet-app-v1', JSON.stringify(payload));
+      // Only when the key is missing: addInitScript also runs on reload and must not undo what the page changed.
+      if (window.localStorage.getItem('diet-app-v1') === null)
+        window.localStorage.setItem('diet-app-v1', JSON.stringify(payload));
     },
     {
       state: { styles: [], overrides: {}, step: 0, kits: [], ...state },
@@ -239,7 +241,7 @@ test('a 3rd locked vegetable is refused with a notice', async ({ page }) => {
 test('swapping a food opens the list and re-portions the card', async ({
   page,
 }) => {
-  await seedAndOpen(page);
+  await seedAndOpen(page, { ...FOODS, salmon: 'ok', 'chicken-thigh': 'ok' });
   const card = page.getByRole('article').first();
   const before = await card.innerText();
   await card
@@ -249,11 +251,12 @@ test('swapping a food opens the list and re-portions the card', async ({
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText('분량이 다시 계산돼요');
+  // Candidates only: the close button (✕) is not inside the list.
   await dialog
+    .getByRole('listitem')
     .getByRole('button')
-    .filter({ hasNotText: '닫기' })
     .and(page.locator('button:enabled'))
-    .nth(1)
+    .first()
     .click();
   await expect(dialog).toBeHidden();
   expect(await card.innerText()).not.toBe(before);
