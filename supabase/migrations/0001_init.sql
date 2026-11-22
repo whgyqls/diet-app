@@ -166,6 +166,9 @@ end
 $$;
 
 revoke all on function public.set_food_prefs(jsonb, jsonb) from public, anon, authenticated;
+-- Expected Security Advisor warning: a security definer function that signed-in users can execute.
+-- Intended: it is the only write path for food_prefs, takes the user id from auth.uid() only and caps the
+-- input (see PLAN.md 9.1, "Supabase Security Advisor").
 grant execute on function public.set_food_prefs(jsonb, jsonb) to authenticated;
 -- Explicit, because the project does not grant API access to new objects automatically. A service_role
 -- call has no user, so auth.uid() is null and the function raises 'not authenticated'.

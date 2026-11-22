@@ -76,6 +76,13 @@ export function checkTestProject(input: {
     if (prod && originOf(prod, label) === testOrigin)
       fail(`the test URL is the production URL from ${label}`);
 
+  // After the production check, so a production URL is always reported as such.
+  const testPath = new URL(testEnv.NEXT_PUBLIC_SUPABASE_URL!.trim()).pathname;
+  if (testPath !== '/')
+    fail(
+      `NEXT_PUBLIC_SUPABASE_URL must be the project URL without a path (https://<ref>.supabase.co), not ...${testPath}`,
+    );
+
   return {
     url: testEnv.NEXT_PUBLIC_SUPABASE_URL!,
     anonKey: testEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY!,

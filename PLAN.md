@@ -371,6 +371,9 @@ type Seasoning = {
 4. **서버 함수 응답 시간 제한 확인(배포 전, 공식 문서)**: 사용 중인 요금제에서 서버 함수(동기 실행)의 제한 시간과 응답 크기 제한을 Netlify 공식 문서로 확인하고 이 문서에 기록한다
 5. **`/api/explain` 시간 제한 점검**: 위 제한 안에 응답하는지 배포 환경에서 실제로 재 본다(캐시 적중/미적중 각각). 제한에 가깝다면 모델·`max_tokens`를 줄이거나, 설명을 비동기로 불러오는 현재 설계(7장)를 유지하고 시간 초과 시 설명 영역만 숨기는 동작을 확인한다
 6. 배포 URL에서 전체 흐름(로그인 → 목표 → 재료 선택 → 추천 → 저장 → 새로고침) 동작 확인
+7. **Supabase Security Advisor 확인**: 아래 3개는 예상된 경고다(2026-11-22 테스트 프로젝트에서 확인). 이 외의 경고가 있으면 배포 전에 원인을 본다
+   - `rls_auto_enable()` 관련 2개: 프로젝트 생성 때 켠 "Enable RLS on new tables automatically" 옵션이 만든 Supabase 함수. 반환 타입이 `event_trigger`라 직접 호출하면 Postgres가 거부한다(로컬 Postgres 16에서 PL/pgSQL 함수로 확인: `select f()`, `select * from f()` 모두 오류). service_role로 본 API 명세에는 `/rpc/rls_auto_enable`이 나열되지만 실행은 되지 않는다. 함수의 실제 언어는 SQL Editor에서 `pg_proc`로 확인할 수 있다
+   - `set_food_prefs` 1개: 로그인 사용자가 실행할 수 있는 security definer 함수. 의도된 설계다(food_prefs의 유일한 쓰기 경로, 사용자 id는 `auth.uid()`로만, 입력 500개 상한). RLS 테스트(`npm run test:db`)로 다른 사용자 행을 건드리지 못함을 확인한다
 
 ### 9.2 Phase 5 추가 요구: 새 계정 시작과 "이전 기록 불러오기"
 - **새 계정으로 시작하면 `/select`는 초기화된 상태**(재료 선택 없음)로 열린다. 이 브라우저의 localStorage에 남아 있던 프로필·재료 선택을 새 계정에 조용히 복사하지 않는다.

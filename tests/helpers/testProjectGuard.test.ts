@@ -103,6 +103,28 @@ describe('checkTestProject', () => {
       ).toThrow(/differs from \.env\.test\.local/);
   });
 
+  it('stops when the URL has a path (the REST endpoint copied instead of the project URL)', () => {
+    for (const url of [
+      `${TEST_URL}/rest/v1/`,
+      `${TEST_URL}/rest/v1`,
+      `${TEST_URL}/auth/v1`,
+    ])
+      expect(() =>
+        checkTestProject({
+          env: env({ NEXT_PUBLIC_SUPABASE_URL: url }),
+          testFile: testFile(url),
+          prodFile,
+        }),
+      ).toThrow(/without a path/);
+    expect(() =>
+      checkTestProject({
+        env: env({ NEXT_PUBLIC_SUPABASE_URL: `${TEST_URL}/` }),
+        testFile: testFile(`${TEST_URL}/`),
+        prodFile,
+      }),
+    ).not.toThrow();
+  });
+
   it('stops when a value is missing in .env.test.local, or the URL is not a URL', () => {
     expect(() =>
       checkTestProject({
