@@ -374,6 +374,8 @@ type Seasoning = {
 7. **Supabase Security Advisor 확인**: 아래 3개는 예상된 경고다(2026-11-22 테스트 프로젝트에서 확인). 이 외의 경고가 있으면 배포 전에 원인을 본다
    - `rls_auto_enable()` 관련 2개: 프로젝트 생성 때 켠 "Enable RLS on new tables automatically" 옵션이 만든 Supabase 함수. 반환 타입이 `event_trigger`라 직접 호출하면 Postgres가 거부한다(로컬 Postgres 16에서 PL/pgSQL 함수로 확인: `select f()`, `select * from f()` 모두 오류). service_role로 본 API 명세에는 `/rpc/rls_auto_enable`이 나열되지만 실행은 되지 않는다. 함수의 실제 언어는 SQL Editor에서 `pg_proc`로 확인할 수 있다
    - `set_food_prefs` 1개: 로그인 사용자가 실행할 수 있는 security definer 함수. 의도된 설계다(food_prefs의 유일한 쓰기 경로, 사용자 id는 `auth.uid()`로만, 입력 500개 상한). RLS 테스트(`npm run test:db`)로 다른 사용자 행을 건드리지 못함을 확인한다
+8. **사용자 SMTP 설정(배포 전 필수)**: Supabase 기본 메일 서비스는 시간당 2통, 프로젝트 팀 주소로만 발송된다(2026-11-22 공식 문서 확인). 실제 사용자가 매직링크로 로그인하려면 운영 프로젝트에 사용자 SMTP를 연결한다(연결 후 기본 한도 시간당 30통, Rate Limits에서 조정)
+   - 사용자 SMTP 설정 시 매직링크 메일 템플릿을 token_hash 방식으로 수정(폰 PWA 대응): `{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&type=email`. 기본 템플릿(code 방식)은 링크를 요청한 브라우저에서만 열려서, 폰 PWA에서 요청하고 메일 앱이 다른 브라우저로 열면 실패한다
 
 ### 9.2 Phase 5 추가 요구: 새 계정 시작과 "이전 기록 불러오기"
 - **새 계정으로 시작하면 `/select`는 초기화된 상태**(재료 선택 없음)로 열린다. 이 브라우저의 localStorage에 남아 있던 프로필·재료 선택을 새 계정에 조용히 복사하지 않는다.
