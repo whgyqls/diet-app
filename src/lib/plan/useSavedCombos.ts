@@ -1,13 +1,16 @@
 'use client';
 // Subscribes a screen to the saved combos: the list, the load status and the actions.
-// Any SavedStore works (localStorage now, the Supabase one after Phase 5d).
+// Without an argument it is the signed-in user's store (Supabase, see src/lib/account/runtime.ts); any SavedStore works.
 import { useSyncExternalStore } from 'react';
-import { savedStore, type SavedCombo, type SavedStore } from './savedCombos';
+import { useAccountSnapshot } from '@/lib/account/useAccount';
+import type { SavedCombo, SavedStore } from './savedCombos';
 
 const NO_SAVED: SavedCombo[] = [];
 const never = () => () => {};
 
-export function useSavedCombos(store: SavedStore = savedStore) {
+export function useSavedCombos(given?: SavedStore) {
+  const account = useAccountSnapshot().savedStore;
+  const store = given ?? account;
   const list = useSyncExternalStore(
     store.subscribe,
     store.list,

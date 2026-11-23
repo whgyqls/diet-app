@@ -388,7 +388,10 @@ describe('accountSync: first login and kits', () => {
       payload: { id: UID },
       options: { onConflict: 'id', ignoreDuplicates: true },
     });
-    expect(fake.tables.profiles).toEqual([{ id: UID }]);
+    // only the id was sent; the other columns are the database's defaults
+    expect(fake.tables.profiles).toHaveLength(1);
+    expect(fake.tables.profiles[0].id).toBe(UID);
+    expect(fake.tables.profiles[0].weight_kg).toBeUndefined();
     expect(synced(store.getState())).toEqual(EMPTY);
     expect(sync.legacyImportedAt()).toBeNull();
   });

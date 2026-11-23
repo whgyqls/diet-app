@@ -72,12 +72,17 @@ export function profileRowToSettings(
   };
 }
 
-/** Upsert payload. Missing profile fields are null. legacy_imported_at is written separately (restore flow). */
+/**
+ * Upsert payload. Missing profile fields are null. Only fields that pass the app's own validation are written:
+ * the onboarding form puts every keystroke into the store ("19" on the way to "1996"), and the table's checks
+ * would refuse those values and the failed write would then undo what the person is typing.
+ * legacy_imported_at is written separately (restore flow).
+ */
 export function settingsToProfileRow(
   uid: string,
   s: AccountSettings,
 ): Omit<ProfileRow, 'legacy_imported_at'> {
-  const p = s.profile;
+  const p = sanitizePartialProfile(s.profile);
   return {
     id: uid,
     sex: p.sex ?? null,
@@ -87,8 +92,11 @@ export function settingsToProfileRow(
     activity_level: p.activityLevel ?? null,
     goal: p.goal ?? null,
     meals_per_day: p.mealsPerDay ?? null,
-    styles: [...s.styles],
-    custom_targets: Object.keys(s.overrides).length > 0 ? s.overrides : null,
+    styles: sanitizeStyles(s.styles),
+    custom_targets:
+      Object.keys(sanitizeOverrides(s.overrides)).length > 0
+        ? sanitizeOverrides(s.overrides)
+        : null,
   };
 }
 

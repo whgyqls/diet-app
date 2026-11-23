@@ -15,6 +15,11 @@ import {
   toggleItem,
 } from '@/lib/selection/selection';
 import { KNOWN_IDS as KNOWN, OIL_IDS } from '@/lib/data/knownIds';
+import { newUuid } from '@/lib/id/newUuid';
+import {
+  NO_ACCOUNT_CACHE_KEY,
+  accountCacheOnly,
+} from '@/lib/supabase/cacheOwner';
 import { safeLocalStorage, type StateStorage } from './safeStorage';
 
 export type { StateStorage };
@@ -34,10 +39,6 @@ export const DEFAULT_STEP = 0;
 /** 2: oils moved from seasonings to foods, ingredient kits added. */
 const STORE_VERSION = 2;
 
-/** Short unique id; crypto.randomUUID is missing on plain-http LAN addresses (phone testing). */
-const newId = () =>
-  `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-
 export type AppState = {
   profile: Partial<Profile>;
   styles: DietStyle[];
@@ -45,6 +46,11 @@ export type AppState = {
   selection: Selection;
   step: number;
   kits: IngredientKit[];
+  /** Whose data this is (the signed-in user's id). Stored with the per-user cache and checked when it is read. */
+  ownerUid: string | null;
+  setOwner: (uid: string | null) => void;
+  /** Empties everything that belongs to an account (logout, user switch, a cache that is not the user's). */
+  resetAccountData: () => void;
   setProfile: (patch: Partial<Profile>) => void;
   toggleStyle: (s: DietStyle) => void;
   setOverrides: (o: TargetOverrides) => void;
@@ -77,6 +83,18 @@ export function createAppStore(storage: StateStorage = safeLocalStorage()) {
         selection: EMPTY_SELECTION,
         step: DEFAULT_STEP,
         kits: [],
+        ownerUid: null,
+        setOwner: (ownerUid) => set({ ownerUid }),
+        resetAccountData: () =>
+          set({
+            profile: {},
+            styles: [],
+            overrides: {},
+            selection: EMPTY_SELECTION,
+            step: DEFAULT_STEP,
+            kits: [],
+            ownerUid: null,
+          }),
         setProfile: (patch) =>
           set((s) => ({ profile: { ...s.profile, ...patch } })),
         toggleStyle: (style) =>
@@ -111,7 +129,7 @@ export function createAppStore(storage: StateStorage = safeLocalStorage()) {
           const err = validateKitName(name, s.kits);
           if (err) return err;
           const kit = createKit({
-            id: newId(),
+            id: newUuid(),
             name,
             selection: s.selection,
             ...(withStyles ? { styles: s.styles } : {}),
@@ -147,6 +165,7 @@ export function createAppStore(storage: StateStorage = safeLocalStorage()) {
           selection: s.selection,
           step: s.step,
           kits: s.kits,
+          ownerUid: s.ownerUid,
         }),
         migrate: (persisted, version) => {
           const p = (persisted ?? {}) as Partial<AppState>;
@@ -167,4 +186,9 @@ export function createAppStore(storage: StateStorage = safeLocalStorage()) {
   );
 }
 
-export const useAppStore = createAppStore();
+/**
+ * The app-wide store. Its storage only lets per-user cache keys through (see accountCacheOnly), and the name
+ * stays on the placeholder until the account runtime switches it to the signed-in user's key.
+ */
+export const useAppStore = createAppStore(accountCacheOnly(safeLocalStorage()));
+useAppStore.persist.setOptions({ name: NO_ACCOUNT_CACHE_KEY });

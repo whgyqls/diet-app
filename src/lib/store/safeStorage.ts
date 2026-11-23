@@ -34,3 +34,13 @@ export function safeLocalStorage(): StateStorage {
     },
   };
 }
+
+/** Every key of localStorage; [] when it is unavailable. Used to find caches of other users. */
+export function safeLocalStorageKeys(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    return Object.keys(window.localStorage);
+  } catch {
+    return [];
+  }
+}

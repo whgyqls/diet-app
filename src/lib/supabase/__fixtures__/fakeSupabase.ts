@@ -34,7 +34,7 @@ export function createFakeSupabase(init: {
   uid: string;
   tables?: Record<string, Row[]>;
 }) {
-  const { uid } = init;
+  let uid = init.uid;
   const tables: Record<string, Row[]> = {
     profiles: [],
     food_prefs: [],
@@ -63,6 +63,24 @@ export function createFakeSupabase(init: {
   });
   const rowsOf = (payload: unknown) =>
     (Array.isArray(payload) ? payload : [payload]) as Row[];
+
+  // The column defaults of 0001_init.sql (created_at / updated_at default now()) and its updated_at trigger.
+  const STAMPED: Record<string, string[]> = {
+    profiles: ['created_at', 'updated_at'],
+    ingredient_kits: ['created_at', 'updated_at'],
+    saved_combos: ['created_at'],
+  };
+  const withDefaults = (table: string, r: Row): Row => {
+    const out = { ...r };
+    const now = new Date().toISOString();
+    for (const col of STAMPED[table] ?? [])
+      if (out[col] === undefined) out[col] = now;
+    return out;
+  };
+  const touch = (table: string, r: Row) => {
+    if (STAMPED[table]?.includes('updated_at'))
+      r.updated_at = new Date().toISOString();
+  };
 
   async function run(
     call: Call,
@@ -136,7 +154,7 @@ export function createFakeSupabase(init: {
             );
           keys.add(k);
         }
-        rows.push(...incoming.map((r) => ({ ...r })));
+        rows.push(...incoming.map((r) => withDefaults(table, r)));
         return { data: null, error: null };
       }
       case 'upsert': {
@@ -152,8 +170,11 @@ export function createFakeSupabase(init: {
           const k = keyOf(table, r, cols);
           const existing = rows.find((x) => keyOf(table, x, cols) === k);
           if (existing) {
-            if (!call.options?.ignoreDuplicates) Object.assign(existing, r);
-          } else rows.push({ ...r });
+            if (!call.options?.ignoreDuplicates) {
+              Object.assign(existing, r);
+              touch(table, existing);
+            }
+          } else rows.push(withDefaults(table, r));
         }
         return { data: null, error: null };
       }
@@ -174,7 +195,10 @@ export function createFakeSupabase(init: {
                 'duplicate key value violates unique constraint',
                 '23505',
               );
-        for (const t of targets) Object.assign(t, patch);
+        for (const t of targets) {
+          Object.assign(t, patch);
+          touch(table, t);
+        }
         return { data: null, error: null };
       }
       case 'delete':
@@ -238,7 +262,29 @@ export function createFakeSupabase(init: {
     }
   }
 
+  // A stand-in for supabase.auth: only the session events the account runtime listens to.
+  type AuthEvent = (
+    event: string,
+    session: { user: { id: string } } | null,
+  ) => void;
+  const authListeners = new Set<AuthEvent>();
+  let session: { user: { id: string } } | null = init.uid
+    ? { user: { id: init.uid } }
+    : null;
+  const auth = {
+    onAuthStateChange: (cb: AuthEvent) => {
+      authListeners.add(cb);
+      return {
+        data: {
+          subscription: { unsubscribe: () => void authListeners.delete(cb) },
+        },
+      };
+    },
+    getSession: async () => ({ data: { session }, error: null }),
+  };
+
   const client = {
+    auth,
     from: (table: string) => new Builder(table),
     rpc: (fn: string, payload: unknown) => {
       const b = new Builder(fn, 'rpc');
@@ -250,6 +296,15 @@ export function createFakeSupabase(init: {
   return {
     client,
     tables,
+    /** Sign in as another user (the fake then shows that user's rows only, like RLS). */
+    setUid(next: string) {
+      uid = next;
+    },
+    /** Send an auth event to the listeners; null = signed out. */
+    emitAuth(event: string, as: string | null) {
+      session = as ? { user: { id: as } } : null;
+      authListeners.forEach((cb) => cb(event, session));
+    },
     calls,
     /** Every call that changes data (select is not a write). */
     writes: () => calls.filter((c) => c.kind !== 'select'),

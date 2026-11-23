@@ -10,6 +10,39 @@ export const LEGACY_STATE_KEY = 'diet-app-v1';
 export const LEGACY_SAVED_KEY = 'diet-app-saved-v1';
 
 export const accountCacheKey = (uid: string) => `${ACCOUNT_CACHE_PREFIX}${uid}`;
+/**
+ * The persist name while nobody is signed in. It does not start with ACCOUNT_CACHE_PREFIX, so the guard below
+ * ignores it: nothing is stored for a visitor, and the legacy keys are never used as a name.
+ */
+export const NO_ACCOUNT_CACHE_KEY = 'diet-app-v1:none';
+
+export const isAccountCacheKey = (key: string) =>
+  key.startsWith(ACCOUNT_CACHE_PREFIX);
+
+type KeyValueStorage = {
+  getItem: (k: string) => string | null;
+  setItem: (k: string, v: string) => void;
+  removeItem: (k: string) => void;
+};
+
+/**
+ * Wraps a storage so only per-user cache keys get through. The app-wide store uses it: even a wrong persist
+ * name can then never read or overwrite the legacy keys (diet-app-v1, diet-app-saved-v1), which hold the
+ * "이전 기록" until the person restores it (PLAN.md 9.2).
+ */
+export function accountCacheOnly<T extends KeyValueStorage>(
+  storage: T,
+): KeyValueStorage {
+  return {
+    getItem: (k) => (isAccountCacheKey(k) ? storage.getItem(k) : null),
+    setItem: (k, v) => {
+      if (isAccountCacheKey(k)) storage.setItem(k, v);
+    },
+    removeItem: (k) => {
+      if (isAccountCacheKey(k)) storage.removeItem(k);
+    },
+  };
+}
 
 export type CacheDecision =
   | { use: true }

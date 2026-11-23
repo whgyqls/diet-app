@@ -9,7 +9,8 @@ import {
   planReducer,
   rerollRequestOf,
 } from '@/lib/plan/planState';
-import { comboSignature, isSaved, snapshotOf } from '@/lib/plan/savedCombos';
+import { comboSignature, isSaved } from '@/lib/plan/savedCombos';
+import { newStarSnapshot } from '@/lib/plan/starSnapshot';
 import { parseProfile } from '@/lib/profile';
 import {
   requestFingerprint,
@@ -32,20 +33,11 @@ import { FlagList } from './FlagList';
 import { RepeatNotice } from './RepeatNotice';
 import { SwapSheet } from './SwapSheet';
 
-/** Short unique id (crypto.randomUUID is missing on plain-http LAN addresses). */
-const newId = () =>
-  `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-
 type Combo = Parameters<typeof comboSignature>[0];
 
-/** Snapshot for the star. A module-level function (not created while rendering): it reads the clock. */
+/** Snapshot for the star, with a uuid id. A module-level function (not created while rendering): it reads the clock. */
 function snapshotFor(combo: Combo, mealType: MealType, fingerprint: string) {
-  return snapshotOf(combo, {
-    id: newId(),
-    mealType,
-    requestFingerprint: fingerprint,
-    savedAt: Date.now(),
-  });
+  return newStarSnapshot(combo, mealType, fingerprint, Date.now());
 }
 
 const linkClass =

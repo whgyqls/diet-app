@@ -1,18 +1,11 @@
 'use client';
-import { useEffect, useState } from 'react';
-import { useAppStore } from './appStore';
+import { useAccountGate } from '@/lib/account/useAccount';
 
-/** Rehydrates the persisted store on the client; false until done (avoids SSR mismatch). */
+/**
+ * May this screen show its content? False only while the account data is still on its way ("불러오는 중…").
+ * A signed-out visitor is ready at once; when the data could not be loaded the screen is shown too (read-only,
+ * with a notice from the AccountProvider), so nothing waits for ever. See useAccountGate.
+ */
 export function useHydrated(): boolean {
-  const [done, setDone] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    Promise.resolve(useAppStore.persist.rehydrate()).then(() => {
-      if (alive) setDone(true);
-    });
-    return () => {
-      alive = false;
-    };
-  }, []);
-  return done;
+  return useAccountGate() !== 'wait';
 }

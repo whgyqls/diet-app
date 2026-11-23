@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { getAccountRuntime } from '@/lib/account/useAccount';
 import { createClient } from '@/lib/supabase/client';
 
 export function LogoutButton() {
@@ -11,6 +12,10 @@ export function LogoutButton() {
   async function logout() {
     setBusy(true);
     try {
+      // edits that are still waiting for the save go to the server before the session ends
+      await getAccountRuntime()
+        .flush()
+        .catch(() => undefined);
       // 'local': only this browser is logged out, not the user's other devices.
       await createClient().auth.signOut({ scope: 'local' });
     } finally {

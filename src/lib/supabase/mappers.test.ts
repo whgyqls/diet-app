@@ -65,6 +65,35 @@ describe('profile mappers', () => {
     });
   });
 
+  it('writes only valid fields: values typed half-way or out of range become null instead of failing the table checks', () => {
+    const row = settingsToProfileRow(UID, {
+      profile: {
+        sex: 'female',
+        birthYear: 19,
+        heightCm: Number.NaN,
+        weightKg: 60.5,
+        goal: 'lose',
+      },
+      styles: ['lowCarb', 'keto' as never],
+      overrides: { sodiumMax: 10, fat: { g: 40 } },
+    });
+    expect(row).toMatchObject({
+      sex: 'female',
+      birth_year: null,
+      height_cm: null,
+      weight_kg: 60.5,
+      goal: 'lose',
+      styles: ['lowCarb'],
+      custom_targets: { fat: { g: 40 } },
+    });
+    const none = settingsToProfileRow(UID, {
+      profile: {},
+      styles: [],
+      overrides: { sodiumMax: 10 },
+    });
+    expect(none.custom_targets).toBeNull();
+  });
+
   it('does not write legacy_imported_at (the restore flow owns it) but reads it as ms', () => {
     expect('legacy_imported_at' in settingsToProfileRow(UID, settings)).toBe(
       false,
