@@ -134,7 +134,7 @@ export const NOTICE_TEXT = {
  * it. One text so the two cannot drift apart (checked by tests/e2e/privacy.spec.ts).
  */
 export const ACCOUNT_DATA_TEXT =
-  '프로필, 재료 선택, 내 재료 세트, 저장한 조합(★), AI 설명 사용 기록';
+  '프로필, 재료 선택, 내 재료 세트, 저장한 조합(★), 날짜별 식단 기록, AI 설명 사용 기록';
 
 // ---- Plan screen: foods that must be in the day (Phase 6b) ----
 export const INCLUDE_TEXT = {
