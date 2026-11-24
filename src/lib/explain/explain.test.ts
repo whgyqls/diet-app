@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { callOpenRouter } from './openrouter';
-import { DEFAULT_MODEL, EXPLAIN_LIMITS, pickModel, utcDay } from './config';
+import {
+  DEFAULT_MODEL,
+  EXPLAIN_LIMITS,
+  FALLBACK_MODELS,
+  pickModel,
+  utcDay,
+} from './config';
 import { fallbackText } from './fallback';
 import {
   allowedNumbers,
@@ -232,6 +238,7 @@ describe('config', () => {
       userPerDay: 5,
       sitePerDay: 45,
       serverTimeoutMs: 8000,
+      clientTimeoutMs: 15000,
     });
   });
 });
@@ -283,6 +290,7 @@ describe('callOpenRouter', () => {
     ).toEqual({
       ok: false,
       reason: 'BAD_RESPONSE',
+      detail: 'NO_CHOICES',
     });
     expect(
       await run(reply(200, {}) as unknown as typeof fetch, NO_KEY),
@@ -446,5 +454,140 @@ describe('numbers: what is allowed and what is not', () => {
     expect(SYSTEM_PROMPT).toContain('반올림');
     expect(SYSTEM_PROMPT).toContain('조리 시간');
     expect(SYSTEM_PROMPT).toContain('효과');
+  });
+});
+
+describe('callOpenRouter: a response without usable text says what was missing', () => {
+  const reply = (body: unknown) =>
+    (async () =>
+      new Response(JSON.stringify(body), {
+        status: 200,
+      })) as unknown as typeof fetch;
+  const run = (body: unknown) =>
+    callOpenRouter({
+      apiKey: 'k',
+      model: 'm/x',
+      input,
+      fetchImpl: reply(body),
+      timeoutMs: 50,
+    });
+  const bad = (choice: unknown, extra: object = {}) => ({
+    model: 'vendor/used-model',
+    choices: choice === undefined ? [] : [choice],
+    ...extra,
+  });
+
+  it('reasoning used the whole budget: empty content, finish=length, token counts', async () => {
+    const r = await run(
+      bad(
+        {
+          finish_reason: 'length',
+          message: { content: '', reasoning: '생각 중인 아주 비밀스러운 문장' },
+        },
+        {
+          usage: {
+            completion_tokens: 600,
+            completion_tokens_details: { reasoning_tokens: 598 },
+          },
+        },
+      ),
+    );
+    expect(r).toEqual({
+      ok: false,
+      reason: 'BAD_RESPONSE',
+      detail: 'CONTENT_EMPTY+REASONING',
+      model: 'vendor/used-model',
+      finish: 'length',
+      tokens: 600,
+      reasoningTokens: 598,
+    });
+    // the reasoning text itself is never kept
+    expect(JSON.stringify(r)).not.toContain('비밀스러운');
+  });
+  it('tells the other shapes apart', async () => {
+    const detail = async (body: unknown) =>
+      ((await run(body)) as { detail?: string }).detail;
+    expect(await detail({})).toBe('NO_CHOICES');
+    expect(await detail(bad(undefined))).toBe('NO_CHOICES');
+    expect(await detail(bad({ finish_reason: 'stop' }))).toBe('NO_MESSAGE');
+    expect(await detail(bad({ message: { content: null } }))).toBe(
+      'CONTENT_NULL',
+    );
+    expect(await detail(bad({ message: {} }))).toBe('CONTENT_NULL');
+    expect(
+      await detail(
+        bad({ message: { content: [{ type: 'text', text: 'x' }] } }),
+      ),
+    ).toBe('CONTENT_NOT_STRING');
+    expect(await detail(bad({ message: { content: '  \n ' } }))).toBe(
+      'CONTENT_EMPTY',
+    );
+    expect(
+      await detail(
+        bad({ message: { content: null, reasoning_details: [{ type: 'x' }] } }),
+      ),
+    ).toBe('CONTENT_NULL+REASONING');
+  });
+  it('a 200 that only carries an error gives its numeric code, not its message', async () => {
+    const r = await run({ error: { code: 502, message: '비밀 오류 문구' } });
+    expect(r).toMatchObject({
+      ok: false,
+      reason: 'BAD_RESPONSE',
+      detail: 'NO_CHOICES',
+      status: 502,
+    });
+    expect(JSON.stringify(r)).not.toContain('비밀');
+  });
+  it('a good answer carries the model, finish and token counts for the log', async () => {
+    const r = await run(
+      bad(
+        { finish_reason: 'stop', message: { content: '{"text":"x"}' } },
+        { usage: { completion_tokens: 40 } },
+      ),
+    );
+    expect(r).toEqual({
+      ok: true,
+      content: '{"text":"x"}',
+      model: 'vendor/used-model',
+      finish: 'stop',
+      tokens: 40,
+    });
+  });
+});
+
+describe('callOpenRouter: models to try', () => {
+  const sent = async (fallbacks?: readonly string[], model = 'a/one:free') => {
+    const f = (async () =>
+      new Response('{}', { status: 200 })) as unknown as typeof fetch;
+    const spy = vi.fn(f);
+    await callOpenRouter({
+      apiKey: 'k',
+      model,
+      fallbacks,
+      input,
+      fetchImpl: spy as unknown as typeof fetch,
+    });
+    return JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+  };
+  it('sends one model as `model`, several as the `models` array in priority order', async () => {
+    expect(await sent()).toMatchObject({ model: 'a/one:free' });
+    expect(await sent([])).not.toHaveProperty('models');
+    const b = await sent(['b/two:free', 'c/three:free']);
+    expect(b.models).toEqual(['a/one:free', 'b/two:free', 'c/three:free']);
+    expect(b).not.toHaveProperty('model');
+  });
+  it('does not list the same model twice', async () => {
+    expect(await sent(['a/one:free'])).toMatchObject({ model: 'a/one:free' });
+    expect((await sent(['b/two:free', 'b/two:free'])).models).toEqual([
+      'a/one:free',
+      'b/two:free',
+    ]);
+  });
+  it('the default is a fixed free model with a free fallback only', () => {
+    expect(DEFAULT_MODEL).toBe('google/gemma-4-26b-a4b-it:free');
+    expect(FALLBACK_MODELS).toEqual(['google/gemma-4-31b-it:free']);
+    for (const m of [DEFAULT_MODEL, ...FALLBACK_MODELS])
+      expect(m.endsWith(':free')).toBe(true);
+    expect(DEFAULT_MODEL).not.toBe('openrouter/free');
   });
 });

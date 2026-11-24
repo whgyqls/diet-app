@@ -3,7 +3,11 @@
 import { createHash } from 'node:crypto';
 import { NextResponse, type NextRequest } from 'next/server';
 import { isSameOrigin } from '@/lib/account/deleteRequest';
-import { pickModel, EXPLAIN_LIMITS } from '@/lib/explain/config';
+import {
+  EXPLAIN_LIMITS,
+  FALLBACK_MODELS,
+  pickModel,
+} from '@/lib/explain/config';
 import { handleExplain, type ExplainDeps } from '@/lib/explain/handler';
 import { callOpenRouter } from '@/lib/explain/openrouter';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -53,6 +57,7 @@ export async function POST(request: NextRequest) {
       callOpenRouter({
         apiKey: process.env.OPENROUTER_API_KEY,
         model: m,
+        fallbacks: FALLBACK_MODELS,
         input,
       }),
   };

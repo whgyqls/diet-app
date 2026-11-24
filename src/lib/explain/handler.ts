@@ -28,7 +28,7 @@ export type ExplainDeps = {
 /** A value in a log line: only plain characters, short. It never carries the answer, the key or user data. */
 const clean = (v: string | number) =>
   String(v)
-    .replace(/[^\w.\-/:가-힣]/g, '_')
+    .replace(/[^\w.\-/:+가-힣]/g, '_')
     .slice(0, 60);
 
 type Why = {
@@ -38,6 +38,10 @@ type Why = {
   model?: string;
   finish?: string;
   status?: number;
+  tokens?: number;
+  reasoningTokens?: number;
+  /** How long the AI call took, in ms. */
+  ms?: number;
 };
 
 export function logLine(w: Why): string {
@@ -48,6 +52,9 @@ export function logLine(w: Why): string {
     ['status', w.status],
     ['model', w.model],
     ['finish', w.finish],
+    ['tokens', w.tokens],
+    ['reasoning_tokens', w.reasoningTokens],
+    ['ms', w.ms],
   ];
   return (
     '[explain] fallback ' +
@@ -112,17 +119,33 @@ export async function handleExplain(
   }
   if (!allowed) return fallback({ reason: 'LIMIT', cause: 'LIMIT' });
 
+  const startedAt = deps.now().getTime();
   const res = await deps.call(input, deps.model);
+  const ms = deps.now().getTime() - startedAt;
+  const seen = {
+    model: res.model,
+    finish: res.finish,
+    tokens: res.tokens,
+    reasoningTokens: res.reasoningTokens,
+    ms,
+  };
+  // An answer cut off by the token limit is never shown, even when the part that arrived looks fine, and an
+  // empty one that was cut off (reasoning used the whole budget) is reported as cut off, not as a bad response.
+  if (res.finish === 'length')
+    return fallback({
+      reason: 'INVALID',
+      cause: 'TRUNCATED',
+      detail: res.ok ? undefined : res.detail,
+      ...seen,
+    });
   if (!res.ok)
     return fallback({
       reason: res.reason === 'RATE_LIMIT' ? 'LIMIT' : 'UNAVAILABLE',
       cause: res.reason,
+      detail: res.detail,
       status: res.status,
+      ...seen,
     });
-  const seen = { model: res.model, finish: res.finish };
-  // An answer cut off by the token limit is never shown, even when the part that arrived looks fine.
-  if (res.finish === 'length')
-    return fallback({ reason: 'INVALID', cause: 'TRUNCATED', ...seen });
   const found = extractExplanation(res.content, input);
   if (!found.ok)
     return fallback({

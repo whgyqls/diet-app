@@ -181,7 +181,7 @@ describe('handleExplain', () => {
     );
     expect(lines).toHaveLength(1);
     expect(lines[0]).toBe(
-      '[explain] fallback reason=INVALID cause=BANNED_WORD detail=혈당 model=vendor/some-free:model finish=stop',
+      '[explain] fallback reason=INVALID cause=BANNED_WORD detail=혈당 model=vendor/some-free:model finish=stop ms=0',
     );
     for (const w of ['비밀문장XYZ', '닭가슴살', 'user-1', 'sk-or', 'Bearer'])
       expect(lines[0]).not.toContain(w);
@@ -209,16 +209,18 @@ describe('handleExplain', () => {
       await run({
         call: async () => ({ ok: false, reason: 'HTTP', status: 502 }),
       }),
-    ).toEqual(['[explain] fallback reason=UNAVAILABLE cause=HTTP status=502']);
+    ).toEqual([
+      '[explain] fallback reason=UNAVAILABLE cause=HTTP status=502 ms=0',
+    ]);
     expect(
       await run({ call: async () => ({ ok: false, reason: 'TIMEOUT' }) }),
-    ).toEqual(['[explain] fallback reason=UNAVAILABLE cause=TIMEOUT']);
+    ).toEqual(['[explain] fallback reason=UNAVAILABLE cause=TIMEOUT ms=0']);
     expect(
       await run({ call: async () => ({ ok: false, reason: 'RATE_LIMIT' }) }),
-    ).toEqual(['[explain] fallback reason=LIMIT cause=RATE_LIMIT']);
+    ).toEqual(['[explain] fallback reason=LIMIT cause=RATE_LIMIT ms=0']);
     expect(
       await run({ call: async () => ({ ok: true, content: '그냥 {문장' }) }),
-    ).toEqual(['[explain] fallback reason=INVALID cause=PARSE']);
+    ).toEqual(['[explain] fallback reason=INVALID cause=PARSE ms=0']);
   });
 
   it('does not log anything for an answer that is shown, and a value with odd characters is made safe', async () => {
@@ -237,7 +239,7 @@ describe('handleExplain', () => {
     const line = (bad.log as ReturnType<typeof vi.fn>).mock
       .calls[0][0] as string;
     expect(line).toBe(
-      '[explain] fallback reason=INVALID cause=TRUNCATED model=a_b_c_d_e finish=length',
+      '[explain] fallback reason=INVALID cause=TRUNCATED model=a_b_c_d_e finish=length ms=0',
     );
   });
 
@@ -262,5 +264,42 @@ describe('handleExplain', () => {
     });
     expect((await send(d)).body).toMatchObject({ source: 'ai' });
     expect(d.cachePut).toHaveBeenCalledTimes(1);
+  });
+
+  it('logs the call time and token numbers, and turns an empty cut-off answer into TRUNCATED', async () => {
+    let t = 1_000_000;
+    const d = deps({
+      now: () => new Date((t += 2500)),
+      call: async () => ({
+        ok: false,
+        reason: 'BAD_RESPONSE',
+        detail: 'CONTENT_EMPTY+REASONING',
+        model: 'nvidia/some-reasoning:free',
+        finish: 'length',
+        tokens: 600,
+        reasoningTokens: 598,
+      }),
+    });
+    const r = await send(d);
+    expect(r.body).toMatchObject({ source: 'fallback', reason: 'INVALID' });
+    expect((d.log as ReturnType<typeof vi.fn>).mock.calls[0][0]).toBe(
+      '[explain] fallback reason=INVALID cause=TRUNCATED detail=CONTENT_EMPTY+REASONING model=nvidia/some-reasoning:free finish=length tokens=600 reasoning_tokens=598 ms=2500',
+    );
+  });
+
+  it('logs a bad response that was not cut off with its detail', async () => {
+    const d = deps({
+      call: async () => ({
+        ok: false,
+        reason: 'BAD_RESPONSE',
+        detail: 'NO_CHOICES',
+        status: 502,
+        finish: undefined,
+      }),
+    });
+    await send(d);
+    expect((d.log as ReturnType<typeof vi.fn>).mock.calls[0][0]).toBe(
+      '[explain] fallback reason=UNAVAILABLE cause=BAD_RESPONSE detail=NO_CHOICES status=502 ms=0',
+    );
   });
 });
