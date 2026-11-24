@@ -13,6 +13,7 @@ const TABLES: [string, string][] = [
   ['food_prefs', 'user_id'],
   ['ingredient_kits', 'user_id'],
   ['saved_combos', 'user_id'],
+  ['day_plans', 'user_id'],
 ];
 
 describe.skipIf(!testProjectConfigured())('account deletion (cascade)', () => {
@@ -60,6 +61,13 @@ describe.skipIf(!testProjectConfigured())('account deletion (cascade)', () => {
         oils: [],
         seasonings: [],
         totals: {},
+      }),
+    );
+    ok(
+      await admin.from('day_plans').insert({
+        user_id: id,
+        date: '2026-11-24',
+        plan: { v: 1 },
       }),
     );
     return id;

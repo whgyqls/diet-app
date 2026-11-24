@@ -33,6 +33,7 @@ import { DaySummaryBars } from './DaySummaryBars';
 import { FlagList } from './FlagList';
 import { IncludeFoodsPanel } from './IncludeFoodsPanel';
 import { IncludeFoodsSheet } from './IncludeFoodsSheet';
+import { SaveDayPlan } from './SaveDayPlan';
 import { RepeatNotice } from './RepeatNotice';
 import { SwapSheet } from './SwapSheet';
 
@@ -260,6 +261,7 @@ function Plan() {
             onDismissDropped={clearIncludeDropped}
           />
           <FlagList plan={state.day} />
+          <SaveDayPlan meals={state.meals} day={state.day} />
           <div
             role="tablist"
             aria-label="끼니"

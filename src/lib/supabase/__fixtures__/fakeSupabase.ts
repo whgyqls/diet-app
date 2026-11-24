@@ -22,6 +22,7 @@ const UNIQUE: Record<string, string[]> = {
   ingredient_kits: ['user_id', 'name'],
   profiles: ['id'],
   food_prefs: ['user_id', 'item_id'],
+  day_plans: ['user_id', 'date'],
 };
 
 /** Predicate helper: `is('upsert', 'saved_combos')`. */
@@ -40,6 +41,7 @@ export function createFakeSupabase(init: {
     food_prefs: [],
     ingredient_kits: [],
     saved_combos: [],
+    day_plans: [],
   };
   for (const [t, rows] of Object.entries(init.tables ?? {}))
     tables[t] = structuredClone(rows);
@@ -69,12 +71,16 @@ export function createFakeSupabase(init: {
     profiles: ['created_at', 'updated_at'],
     ingredient_kits: ['created_at', 'updated_at'],
     saved_combos: ['created_at'],
+    day_plans: ['created_at'],
   };
   const withDefaults = (table: string, r: Row): Row => {
     const out = { ...r };
     const now = new Date().toISOString();
     for (const col of STAMPED[table] ?? [])
       if (out[col] === undefined) out[col] = now;
+    // day_plans.id default gen_random_uuid()
+    if (table === 'day_plans' && out.id === undefined)
+      out.id = crypto.randomUUID();
     return out;
   };
   const touch = (table: string, r: Row) => {

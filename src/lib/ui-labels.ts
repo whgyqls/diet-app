@@ -186,3 +186,30 @@ export const AI_TEXT = {
     '지금은 AI가 바빠서 기본 설명을 보여드려요. 잠시 뒤에 다시 눌러 주세요.',
   fallbackError: 'AI 설명을 가져오지 못해 기본 설명을 보여드려요.',
 } as const;
+
+// ---- Day plans: save a day by date, list them on /saved (Phase 6a) ----
+export const DAY_PLAN_TEXT = {
+  saveTitle: '이 식단을 날짜별로 저장',
+  dateLabel: '저장할 날짜',
+  saveHint:
+    '지금 고른 조합을 이 날짜로 저장해요. 같은 날짜의 기록이 있으면 그 날짜만 바꿔요.',
+  save: '이 날짜로 저장',
+  saving: '저장 중…',
+  badDate: '2020-01-01부터 2099-12-31 사이의 날짜를 골라 주세요.',
+  saved: (date: string) => `${date} 식단을 저장했어요.`,
+  seeSaved: '저장한 조합에서 보기',
+  saveFailed: '저장하지 못했어요. 잠시 뒤에 다시 시도해 주세요.',
+  listTitle: '날짜별 식단',
+  empty:
+    "아직 날짜별로 저장한 식단이 없어요. 추천 화면에서 '이 날짜로 저장'을 눌러 보세요.",
+  loadFailed: '날짜별 식단을 불러오지 못했어요',
+  retry: '다시 시도',
+  total: '하루 합계',
+  oils: '조리용 기름',
+  seasonings: '양념',
+  delete: '삭제',
+  confirmDelete: '이 날짜의 식단을 삭제할까요?',
+  confirmYes: '삭제',
+  cancel: '취소',
+  deleteFailed: '삭제하지 못했어요. 잠시 뒤에 다시 시도해 주세요.',
+} as const;

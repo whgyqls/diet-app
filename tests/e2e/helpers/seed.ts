@@ -85,13 +85,17 @@ const must = (what: string, r: { error: { message: string } | null }) => {
   if (r.error) throw new Error(`${what}: ${r.error.message}`);
 };
 
-/** Deletes everything of this user: ★, kits, food preferences, profile row. Always by the user's id. */
+/** Deletes everything of this user: ★, day plans, kits, food preferences, profile row. Always by the user's id. */
 export async function resetUserData(uid: string): Promise<void> {
   const a = testAdmin();
   own(uid);
   must(
     'reset saved_combos',
     await a.from('saved_combos').delete().eq('user_id', uid),
+  );
+  must(
+    'reset day_plans',
+    await a.from('day_plans').delete().eq('user_id', uid),
   );
   must(
     'reset ingredient_kits',
