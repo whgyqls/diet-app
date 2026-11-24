@@ -57,7 +57,11 @@ test('groups by meal (breakfast, lunch, dinner) with the newest first', async ({
     combo('d', 'lunch', 400, '두부'),
   ]);
   await page.goto('/saved');
-  const headings = page.getByRole('heading', { level: 2 });
+  // the meal groups only: /saved also has the "날짜별 식단" section with its own h2
+  const headings = page.getByRole('heading', {
+    level: 2,
+    name: /^(아침|점심|저녁)/,
+  });
   await expect(headings).toHaveText([/아침/, /점심/, /저녁/]);
   await expect(
     page.getByRole('region', { name: '점심' }).getByRole('article'),

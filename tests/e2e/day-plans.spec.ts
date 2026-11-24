@@ -137,9 +137,10 @@ test('a date outside 2020-01-01 ~ 2099-12-31 or an empty date cannot be saved', 
   for (const bad of ['2019-12-31', '2100-01-01', '']) {
     await dateInput(page).fill(bad);
     await expect(saveButton(page)).toBeDisabled();
-    await expect(page.getByRole('alert')).toContainText(
-      '2020-01-01부터 2099-12-31',
-    );
+    // not getByRole('alert'): the page has another alert element (the route announcer)
+    await expect(
+      page.getByText('2020-01-01부터 2099-12-31 사이의 날짜를 골라 주세요.'),
+    ).toBeVisible();
   }
   await dateInput(page).fill('2020-01-01');
   await expect(saveButton(page)).toBeEnabled();
