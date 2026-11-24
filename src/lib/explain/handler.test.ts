@@ -39,6 +39,7 @@ function deps(over: Partial<ExplainDeps> = {}) {
     ),
     consume: vi.fn(async () => true),
     call: vi.fn(async () => ({ ok: true as const, content: GOOD })),
+    log: vi.fn(),
     ...over,
   };
   return d;
@@ -161,5 +162,105 @@ describe('handleExplain', () => {
       ],
     });
     expect(d.call).toHaveBeenCalledTimes(1);
+  });
+
+  it('logs one line per fallback with the cause, and nothing about the answer, key or user', async () => {
+    const secretAnswer =
+      '{"text":"닭가슴살 150g이 혈당에 좋아요. 비밀문장XYZ"}';
+    const d = deps({
+      call: async () => ({
+        ok: true,
+        content: secretAnswer,
+        model: 'vendor/some-free:model',
+        finish: 'stop',
+      }),
+    });
+    await send(d);
+    const lines = (d.log as ReturnType<typeof vi.fn>).mock.calls.map(
+      (c) => c[0] as string,
+    );
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toBe(
+      '[explain] fallback reason=INVALID cause=BANNED_WORD detail=혈당 model=vendor/some-free:model finish=stop',
+    );
+    for (const w of ['비밀문장XYZ', '닭가슴살', 'user-1', 'sk-or', 'Bearer'])
+      expect(lines[0]).not.toContain(w);
+  });
+
+  it('logs the cause for every other way to fall back', async () => {
+    const run = async (over: Partial<ExplainDeps>) => {
+      const d = deps(over);
+      await send(d);
+      return (d.log as ReturnType<typeof vi.fn>).mock.calls.map(
+        (c) => c[0] as string,
+      );
+    };
+    expect(await run({ consume: async () => false })).toEqual([
+      '[explain] fallback reason=LIMIT cause=LIMIT',
+    ]);
+    expect(
+      await run({
+        consume: async () => {
+          throw new Error('x');
+        },
+      }),
+    ).toEqual(['[explain] fallback reason=UNAVAILABLE cause=CONSUME_ERROR']);
+    expect(
+      await run({
+        call: async () => ({ ok: false, reason: 'HTTP', status: 502 }),
+      }),
+    ).toEqual(['[explain] fallback reason=UNAVAILABLE cause=HTTP status=502']);
+    expect(
+      await run({ call: async () => ({ ok: false, reason: 'TIMEOUT' }) }),
+    ).toEqual(['[explain] fallback reason=UNAVAILABLE cause=TIMEOUT']);
+    expect(
+      await run({ call: async () => ({ ok: false, reason: 'RATE_LIMIT' }) }),
+    ).toEqual(['[explain] fallback reason=LIMIT cause=RATE_LIMIT']);
+    expect(
+      await run({ call: async () => ({ ok: true, content: '그냥 {문장' }) }),
+    ).toEqual(['[explain] fallback reason=INVALID cause=PARSE']);
+  });
+
+  it('does not log anything for an answer that is shown, and a value with odd characters is made safe', async () => {
+    const d = deps();
+    await send(d);
+    expect(d.log).not.toHaveBeenCalled();
+    const bad = deps({
+      call: async () => ({
+        ok: true,
+        content: GOOD,
+        model: 'a b\nc"d;e',
+        finish: 'length',
+      }),
+    });
+    await send(bad);
+    const line = (bad.log as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as string;
+    expect(line).toBe(
+      '[explain] fallback reason=INVALID cause=TRUNCATED model=a_b_c_d_e finish=length',
+    );
+  });
+
+  it('never shows or caches a cut-off answer, even when the part that arrived looks fine', async () => {
+    const d = deps({
+      call: async () => ({ ok: true, content: GOOD, finish: 'length' }),
+    });
+    expect((await send(d)).body).toMatchObject({
+      source: 'fallback',
+      reason: 'INVALID',
+    });
+    expect(d.cachePut).not.toHaveBeenCalled();
+  });
+
+  it('shows a plain sentence without JSON when it names a food, passes every check and is cached', async () => {
+    const d = deps({
+      call: async () => ({
+        ok: true,
+        content:
+          '닭가슴살 150g이 단백질 36g을 채워 줘요. 양배추와 함께 드세요.',
+      }),
+    });
+    expect((await send(d)).body).toMatchObject({ source: 'ai' });
+    expect(d.cachePut).toHaveBeenCalledTimes(1);
   });
 });

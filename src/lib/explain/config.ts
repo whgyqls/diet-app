@@ -8,7 +8,7 @@ export const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 export const APP_TITLE = 'wonmul-diet';
 
 /** Bump when the prompt or the output rules change: it is part of the cache key. */
-export const PROMPT_VERSION = 1;
+export const PROMPT_VERSION = 2;
 
 export const EXPLAIN_LIMITS = {
   /** Calls per user per UTC day (cache hits are free). */

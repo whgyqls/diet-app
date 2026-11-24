@@ -4,7 +4,7 @@
 import { EXPLAIN_LIMITS, utcDay } from './config';
 import { fallbackText } from './fallback';
 import { cacheKeyText, explainRequestSchema, toInput } from './payload';
-import { checkExplanation, parseModelText } from './validate';
+import { checkExplanation, extractExplanation } from './validate';
 import type { CallResult } from './openrouter';
 import type { ExplainInput, ExplainResponse, FallbackReason } from './types';
 
@@ -21,7 +21,42 @@ export type ExplainDeps = {
   /** True when the call was counted (both daily limits allow it). */
   consume: (userId: string, day: string) => Promise<boolean>;
   call: (input: ExplainInput, model: string) => Promise<CallResult>;
+  /** One log line per fallback (the route passes console.warn). */
+  log: (line: string) => void;
 };
+
+/** A value in a log line: only plain characters, short. It never carries the answer, the key or user data. */
+const clean = (v: string | number) =>
+  String(v)
+    .replace(/[^\w.\-/:가-힣]/g, '_')
+    .slice(0, 60);
+
+type Why = {
+  reason: FallbackReason;
+  cause: string;
+  detail?: string;
+  model?: string;
+  finish?: string;
+  status?: number;
+};
+
+export function logLine(w: Why): string {
+  const parts: [string, string | number | undefined][] = [
+    ['reason', w.reason],
+    ['cause', w.cause],
+    ['detail', w.detail],
+    ['status', w.status],
+    ['model', w.model],
+    ['finish', w.finish],
+  ];
+  return (
+    '[explain] fallback ' +
+    parts
+      .filter(([, v]) => v !== undefined && v !== '')
+      .map(([k, v]) => `${k}=${clean(v!)}`)
+      .join(' ')
+  );
+}
 
 export type HandlerResult = {
   status: number;
@@ -53,10 +88,17 @@ export async function handleExplain(
   const input = parsed.success ? toInput(parsed.data) : null;
   if (!input) return error(400, 'bad_request');
 
-  const fallback = (reason: FallbackReason): HandlerResult => ({
-    status: 200,
-    body: { text: fallbackText(input), source: 'fallback', reason },
-  });
+  const fallback = (why: Why): HandlerResult => {
+    deps.log(logLine(why));
+    return {
+      status: 200,
+      body: {
+        text: fallbackText(input),
+        source: 'fallback',
+        reason: why.reason,
+      },
+    };
+  };
 
   const hash = deps.hash(cacheKeyText(input, deps.model));
   const cached = await deps.cacheGet(hash).catch(() => null);
@@ -66,16 +108,38 @@ export async function handleExplain(
   try {
     allowed = await deps.consume(userId, utcDay(deps.now()));
   } catch {
-    return fallback('UNAVAILABLE');
+    return fallback({ reason: 'UNAVAILABLE', cause: 'CONSUME_ERROR' });
   }
-  if (!allowed) return fallback('LIMIT');
+  if (!allowed) return fallback({ reason: 'LIMIT', cause: 'LIMIT' });
 
   const res = await deps.call(input, deps.model);
   if (!res.ok)
-    return fallback(res.reason === 'RATE_LIMIT' ? 'LIMIT' : 'UNAVAILABLE');
-  const text = parseModelText(res.content);
-  if (text === null || !checkExplanation(text, input).ok)
-    return fallback('INVALID');
+    return fallback({
+      reason: res.reason === 'RATE_LIMIT' ? 'LIMIT' : 'UNAVAILABLE',
+      cause: res.reason,
+      status: res.status,
+    });
+  const seen = { model: res.model, finish: res.finish };
+  // An answer cut off by the token limit is never shown, even when the part that arrived looks fine.
+  if (res.finish === 'length')
+    return fallback({ reason: 'INVALID', cause: 'TRUNCATED', ...seen });
+  const found = extractExplanation(res.content, input);
+  if (!found.ok)
+    return fallback({
+      reason: 'INVALID',
+      cause: found.reason,
+      detail: found.detail,
+      ...seen,
+    });
+  const checked = checkExplanation(found.text, input);
+  if (!checked.ok)
+    return fallback({
+      reason: 'INVALID',
+      cause: checked.reason,
+      detail: checked.detail,
+      ...seen,
+    });
+  const text = found.text;
 
   await deps.cachePut(hash, deps.model, text).catch(() => {});
   return { status: 200, body: { text, source: 'ai' } };

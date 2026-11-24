@@ -9,7 +9,12 @@ import {
   toInput,
 } from './payload';
 import { SYSTEM_PROMPT, userPrompt } from './prompt';
-import { BANNED_WORDS, checkExplanation, parseModelText } from './validate';
+import {
+  BANNED_WORDS,
+  checkExplanation,
+  extractExplanation,
+  parseModelText,
+} from './validate';
 import type { ExplainRequest } from './types';
 
 const REQ: ExplainRequest = {
@@ -132,9 +137,10 @@ describe('checkExplanation', () => {
     ).toEqual({
       ok: false,
       reason: 'NEW_NUMBER',
+      detail: 'unit',
     });
     expect(
-      checkExplanation('단백질 3g이 들어 있는 한 끼 조합이에요.', input),
+      checkExplanation('단백질 7g이 들어 있는 한 끼 조합이에요.', input),
     ).toMatchObject({
       ok: false,
     });
@@ -152,7 +158,7 @@ describe('checkExplanation', () => {
           `닭가슴살 150g 조합이라 ${w}에 좋아요. 천천히 드세요.`,
           input,
         ),
-      ).toEqual({ ok: false, reason: 'BANNED_WORD' });
+      ).toEqual({ ok: false, reason: 'BANNED_WORD', detail: w });
   });
   it('refuses too short, too long and too many sentences', () => {
     expect(checkExplanation('짧아요', input)).toMatchObject({
@@ -190,7 +196,7 @@ describe('parseModelText', () => {
       '안녕',
       '{"text":3}',
       '{bad json}',
-      '{"other":"x"}',
+      '{"a":"x","b":"y"}',
       5,
       null,
     ])
@@ -268,6 +274,7 @@ describe('callOpenRouter', () => {
     expect(await run(reply(500, {}) as unknown as typeof fetch)).toEqual({
       ok: false,
       reason: 'HTTP',
+      status: 500,
     });
     expect(
       await run(reply(200, { choices: [] }) as unknown as typeof fetch),
@@ -293,5 +300,149 @@ describe('callOpenRouter', () => {
     const f = reply(200, {});
     await run(f as unknown as typeof fetch, NO_KEY);
     expect(f).not.toHaveBeenCalled();
+  });
+});
+
+describe('parseModelText: what small models really send', () => {
+  const T = '닭가슴살 150g이에요.';
+  const cases: [string, string, string | null][] = [
+    ['code block', '```json\n{"text":"' + T + '"}\n```', T],
+    ['code block without a language', '```\n{"text":"' + T + '"}\n```', T],
+    [
+      'talk before and after, with braces in it',
+      '네, 설명입니다:\n{"text":"' + T + '"}\n도움이 되길 {^^}',
+      T,
+    ],
+    ['a brace after the JSON', '{"text":"' + T + '"} 참고: {없음}', T],
+    [
+      'a raw line break inside the string',
+      '{"text":"닭가슴살 150g이에요.\n양배추도 드세요."}',
+      '닭가슴살 150g이에요. 양배추도 드세요.',
+    ],
+    ['a comma before the closing brace', '{"text":"' + T + '",}', T],
+    ['curly quotes', '{“text”:“' + T + '”}', T],
+    ['another key name', '{"explanation":"' + T + '"}', T],
+    [
+      'a thinking block first',
+      '<think>{"text":"x"} 음…</think>{"text":"' + T + '"}',
+      T,
+    ],
+    ['an array', '[{"text":"' + T + '"}]', T],
+    [
+      'a brace inside the sentence',
+      '{"text":"닭가슴살 {150g}이에요."}',
+      '닭가슴살 {150g}이에요.',
+    ],
+    ['no JSON', T, null],
+    ['two string values and no text key', '{"a":"x","b":"y"}', null],
+    ['cut off in the middle', '{"text":"닭가슴살 150g이에', null],
+  ];
+  for (const [name, content, want] of cases)
+    it(name, () => expect(parseModelText(content)).toBe(want));
+});
+
+describe('extractExplanation: a plain sentence without JSON', () => {
+  const ex = (c: unknown) => extractExplanation(c, input);
+  it('is taken when it names a food of the combo', () => {
+    expect(ex('"닭가슴살 150g이 단백질 36g을 채워 줘요."')).toEqual({
+      ok: true,
+      text: '닭가슴살 150g이 단백질 36g을 채워 줘요.',
+      mode: 'plain',
+    });
+  });
+  it('is refused when it names none of the foods', () => {
+    expect(ex('단백질이 풍부한 조합이에요. 천천히 드세요.')).toEqual({
+      ok: false,
+      reason: 'NO_FOOD_NAME',
+    });
+  });
+  it('is refused when it looks like broken JSON, code or talk about JSON', () => {
+    for (const bad of [
+      '{"text":"닭가슴살 150g이에',
+      '```닭가슴살```',
+      '닭가슴살입니다. JSON으로 드릴게요.',
+      '',
+      '   ',
+    ])
+      expect(ex(bad)).toMatchObject({ ok: false, reason: 'PARSE' });
+    expect(ex(5)).toMatchObject({ ok: false, reason: 'PARSE' });
+  });
+  it('still goes through every other check', () => {
+    const plain = (t: string) => {
+      const r = ex(t);
+      return r.ok ? checkExplanation(r.text, input) : r;
+    };
+    expect(plain('닭가슴살 999g이에요. 천천히 드세요.')).toMatchObject({
+      reason: 'NEW_NUMBER',
+      detail: 'unit',
+    });
+    expect(plain('닭가슴살이 혈당에 좋아요. 천천히 드세요.')).toMatchObject({
+      reason: 'BANNED_WORD',
+      detail: '혈당',
+    });
+    expect(plain('닭가슴살')).toMatchObject({
+      reason: 'LENGTH',
+      detail: 'short',
+    });
+    expect(plain('닭가슴살이에요. 좋아요. 든든해요. 맛있어요.')).toMatchObject({
+      reason: 'SENTENCES',
+    });
+    expect(plain('닭가슴살 150g이 단백질 36g을 채워 줘요.')).toEqual({
+      ok: true,
+    });
+  });
+});
+
+describe('numbers: what is allowed and what is not', () => {
+  const chk = (t: string) => checkExplanation(t, input);
+  it('allows a decimal input rounded to a whole number (2.8 -> 3), nothing else rounded', () => {
+    expect(chk('포화지방은 약 3g으로 적은 편이에요.')).toEqual({ ok: true });
+    expect(chk('포화지방은 2.8g으로 적은 편이에요.')).toEqual({ ok: true });
+    expect(chk('약 410kcal로 가벼운 한 끼예요.')).toMatchObject({
+      reason: 'NEW_NUMBER',
+      detail: 'unit',
+    });
+    expect(chk('단백질이 약 35g 들어 있어요.')).toMatchObject({
+      reason: 'NEW_NUMBER',
+    });
+  });
+  it('still refuses sums, percentages and cooking numbers', () => {
+    expect(chk('재료를 합치면 250g이에요. 천천히 드세요.')).toMatchObject({
+      reason: 'NEW_NUMBER',
+    });
+    expect(chk('지방은 전체의 약 26%예요. 천천히 드세요.')).toMatchObject({
+      reason: 'NEW_NUMBER',
+    });
+    expect(chk('양배추는 5분 정도 데쳐 드세요.')).toMatchObject({
+      reason: 'NEW_NUMBER',
+      detail: 'bare',
+    });
+  });
+  it('a small count with an energy unit is not a "bare count" (2칼로리 is made up)', () => {
+    expect(chk('겨우 2칼로리예요. 천천히 드세요.')).toMatchObject({
+      reason: 'NEW_NUMBER',
+      detail: 'unit',
+    });
+    expect(chk('하루 3끼 중 한 끼로 알맞아요. 천천히 드세요.')).toEqual({
+      ok: true,
+    });
+  });
+  it('units with a space, spelled units, decimals and thousands separators are read', () => {
+    const big = toInput({
+      ...REQ,
+      totals: { ...REQ.totals, sodium: 1310 },
+    })!;
+    for (const t of [
+      '합계는 412 kcal예요. 천천히 드세요.',
+      '약 412칼로리, 단백질 36그램이에요.',
+      '나트륨은 1,310mg이에요. 천천히 드세요.',
+    ])
+      expect(checkExplanation(t, big), t).toEqual({ ok: true });
+  });
+  it('the answer asks nothing the validator cannot check: the prompt forbids rounding and cooking numbers', async () => {
+    const { SYSTEM_PROMPT } = await import('./prompt');
+    expect(SYSTEM_PROMPT).toContain('반올림');
+    expect(SYSTEM_PROMPT).toContain('조리 시간');
+    expect(SYSTEM_PROMPT).toContain('효과');
   });
 });

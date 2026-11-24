@@ -48,6 +48,7 @@ export async function POST(request: NextRequest) {
       if (error) throw new Error('consume_failed');
       return data === true;
     },
+    log: (line) => console.warn(line),
     call: (input, m) =>
       callOpenRouter({
         apiKey: process.env.OPENROUTER_API_KEY,

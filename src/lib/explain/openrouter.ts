@@ -5,10 +5,13 @@ import { SYSTEM_PROMPT, userPrompt } from './prompt';
 import type { ExplainInput } from './types';
 
 export type CallResult =
-  | { ok: true; content: string }
+  /** `model` (the one OpenRouter really used) and `finish` (e.g. "length" = cut off) are only for the log. */
+  | { ok: true; content: string; model?: string; finish?: string }
   | {
       ok: false;
       reason: 'NO_KEY' | 'RATE_LIMIT' | 'TIMEOUT' | 'HTTP' | 'BAD_RESPONSE';
+      /** HTTP status, when there was one. */
+      status?: number;
     };
 
 export async function callOpenRouter(args: {
@@ -43,14 +46,25 @@ export async function callOpenRouter(args: {
       ),
     });
     if (res.status === 429) return { ok: false, reason: 'RATE_LIMIT' };
-    if (!res.ok) return { ok: false, reason: 'HTTP' };
+    if (!res.ok) return { ok: false, reason: 'HTTP', status: res.status };
     const body: unknown = await res.json();
-    const content = (
-      body as { choices?: { message?: { content?: unknown } }[] }
-    )?.choices?.[0]?.message?.content;
-    return typeof content === 'string' && content.trim()
-      ? { ok: true, content }
-      : { ok: false, reason: 'BAD_RESPONSE' };
+    const b = body as {
+      model?: unknown;
+      choices?: {
+        message?: { content?: unknown };
+        finish_reason?: unknown;
+      }[];
+    } | null;
+    const content = b?.choices?.[0]?.message?.content;
+    if (typeof content !== 'string' || !content.trim())
+      return { ok: false, reason: 'BAD_RESPONSE' };
+    const finish = b?.choices?.[0]?.finish_reason;
+    return {
+      ok: true,
+      content,
+      ...(typeof b?.model === 'string' ? { model: b.model } : {}),
+      ...(typeof finish === 'string' ? { finish } : {}),
+    };
   } catch (e) {
     const timeout =
       e instanceof Error &&

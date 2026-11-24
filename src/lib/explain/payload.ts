@@ -126,13 +126,20 @@ export function cacheKeyText(input: ExplainInput, model: string): string {
   return JSON.stringify({ v: PROMPT_VERSION, model, input });
 }
 
-/** Every number the AI is allowed to quote: the ones in the input. */
+/**
+ * Every number the AI is allowed to quote: the ones in the input, and a decimal one rounded to a whole number
+ * (2.8 -> 3). Nothing else is derived: no sums, no percentages, no rounding to tens.
+ */
 export function allowedNumbers(input: ExplainInput): Set<number> {
   const out = new Set<number>();
-  for (const i of input.items) out.add(i.grams);
-  for (const o of input.oils) out.add(o.grams);
-  for (const s of input.seasonings) out.add(s.units);
-  for (const v of Object.values(input.totals)) out.add(v);
+  const add = (n: number) => {
+    out.add(n);
+    if (!Number.isInteger(n)) out.add(Math.round(n));
+  };
+  for (const i of input.items) add(i.grams);
+  for (const o of input.oils) add(o.grams);
+  for (const s of input.seasonings) add(s.units);
+  for (const v of Object.values(input.totals)) add(v);
   return out;
 }
 
