@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
@@ -136,6 +137,11 @@ export function LoginForm() {
           {LOGIN_MESSAGES.sent}
         </p>
       )}
+      <p className="text-center text-sm text-neutral-700 dark:text-neutral-300">
+        <Link href="/privacy" className="underline">
+          개인정보 안내
+        </Link>
+      </p>
     </form>
   );
 }

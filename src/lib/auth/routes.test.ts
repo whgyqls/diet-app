@@ -19,6 +19,7 @@ describe('isProtectedPath', () => {
     for (const p of [
       '/',
       '/auth/callback',
+      '/privacy',
       '/api/explain',
       '/favicon.ico',
       '/planet',

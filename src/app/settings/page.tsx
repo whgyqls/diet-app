@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { DeleteAccountButton } from '@/components/auth/DeleteAccountButton';
 import { LogoutButton } from '@/components/auth/LogoutButton';
 
@@ -9,6 +10,11 @@ export default function Page() {
         <LogoutButton />
         <DeleteAccountButton />
       </div>
+      <p className="mt-6 text-sm">
+        <Link href="/privacy" className="underline">
+          개인정보 안내
+        </Link>
+      </p>
     </main>
   );
 }

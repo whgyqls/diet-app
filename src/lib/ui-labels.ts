@@ -128,3 +128,10 @@ export const NOTICE_TEXT = {
   REROLL_ERROR: '다시 추천하지 못했어요. 잠시 후 다시 시도해 주세요',
   SWAP_DUPLICATE: '이미 목록에 있는 조합이에요',
 } as const;
+
+/**
+ * What a deleted account takes with it, as the delete dialog (/settings) and the privacy page (/privacy) both say
+ * it. One text so the two cannot drift apart (checked by tests/e2e/privacy.spec.ts).
+ */
+export const ACCOUNT_DATA_TEXT =
+  '프로필, 재료 선택, 내 재료 세트, 저장한 조합(★)';
