@@ -9,7 +9,7 @@ const seen = new Map<string, ExplainResponse>();
 
 function localFallback(
   req: ExplainRequest,
-  reason: 'LIMIT' | 'UNAVAILABLE',
+  reason: 'BUSY' | 'UNAVAILABLE',
 ): ExplainResponse {
   const input = toInput(req);
   return {
@@ -39,8 +39,12 @@ export async function fetchExplanation(
       res.ok && typeof body.text === 'string' && body.source
         ? (body as ExplainResponse)
         : localFallback(req, 'UNAVAILABLE');
-  } catch {
-    out = localFallback(req, 'UNAVAILABLE');
+  } catch (e) {
+    // Gave up waiting: the AI side is slow, so "try again later". Anything else (offline...) is plain failure.
+    const slow =
+      e instanceof Error &&
+      (e.name === 'TimeoutError' || e.name === 'AbortError');
+    out = localFallback(req, slow ? 'BUSY' : 'UNAVAILABLE');
   }
   // A failure is not remembered, so pressing the button again can try again.
   if (out.source !== 'fallback') seen.set(key, out);

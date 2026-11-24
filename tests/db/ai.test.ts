@@ -183,4 +183,70 @@ describe.skipIf(!testProjectConfigured())('AI tables and limits', () => {
     expect(await usage(a.id, day(8))).toBe(0);
     expect(await usage(b.id, day(8))).toBe(1);
   });
+
+  const refund = async (u: string, d: string) => {
+    const { error } = await admin.rpc('ai_refund', { p_user: u, p_day: d });
+    if (error) throw new Error(error.message);
+  };
+
+  it('ai_refund gives one counted call back, never below zero', async () => {
+    const u = await makeUser();
+    await consume(u.id, day(9), 5, 1000);
+    await consume(u.id, day(9), 5, 1000);
+    expect(await usage(u.id, day(9))).toBe(2);
+    await refund(u.id, day(9));
+    expect(await usage(u.id, day(9))).toBe(1);
+    await refund(u.id, day(9));
+    await refund(u.id, day(9)); // nothing left to give back
+    expect(await usage(u.id, day(9))).toBe(0);
+  });
+
+  it('ai_refund does nothing for a user or a day without usage, and touches no one else', async () => {
+    const a = await makeUser();
+    const b = await makeUser();
+    await consume(a.id, day(10), 5, 1000);
+    await consume(b.id, day(10), 5, 1000);
+    await refund(a.id, day(11)); // another day
+    await refund(b.id, day(12)); // no row at all
+    expect(await usage(a.id, day(10))).toBe(1);
+    expect(await usage(b.id, day(10))).toBe(1);
+    await refund(a.id, day(10));
+    expect(await usage(a.id, day(10))).toBe(0);
+    expect(await usage(b.id, day(10))).toBe(1);
+  });
+
+  it('a refunded call can be counted again, so the user gets the full limit back', async () => {
+    const u = await makeUser();
+    for (let i = 0; i < 3; i++)
+      expect(await consume(u.id, day(13), 3, 1000)).toBe(true);
+    expect(await consume(u.id, day(13), 3, 1000)).toBe(false);
+    await refund(u.id, day(13));
+    expect(await consume(u.id, day(13), 3, 1000)).toBe(true);
+    expect(await consume(u.id, day(13), 3, 1000)).toBe(false);
+  });
+
+  it('the refund also frees the site limit, and parallel refunds stay exact', async () => {
+    const a = await makeUser();
+    const b = await makeUser();
+    expect(await consume(a.id, day(14), 10, 2)).toBe(true);
+    expect(await consume(b.id, day(14), 10, 2)).toBe(true);
+    expect(await consume(a.id, day(14), 10, 2)).toBe(false); // the site is full
+    await refund(b.id, day(14));
+    expect(await consume(a.id, day(14), 10, 2)).toBe(true);
+
+    const u = await makeUser();
+    for (let i = 0; i < 6; i++) await consume(u.id, day(15), 10, 1000);
+    await Promise.all(Array.from({ length: 4 }, () => refund(u.id, day(15))));
+    expect(await usage(u.id, day(15))).toBe(2);
+  });
+
+  it('ai_refund is closed to anon and to signed-in users', async () => {
+    const u = await makeUser();
+    await consume(u.id, day(16), 5, 1000);
+    for (const client of [anon, u.client]) {
+      const r = await client.rpc('ai_refund', { p_user: u.id, p_day: day(16) });
+      expect(r.error).not.toBeNull();
+    }
+    expect(await usage(u.id, day(16))).toBe(1);
+  });
 });

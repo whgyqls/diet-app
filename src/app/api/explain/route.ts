@@ -52,6 +52,13 @@ export async function POST(request: NextRequest) {
       if (error) throw new Error('consume_failed');
       return data === true;
     },
+    refund: async (userId, day) => {
+      const { error } = await createAdminClient().rpc('ai_refund', {
+        p_user: userId,
+        p_day: day,
+      });
+      if (error) throw new Error('refund_failed');
+    },
     log: (line) => console.warn(line),
     call: (input, m) =>
       callOpenRouter({

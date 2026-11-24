@@ -276,9 +276,11 @@ describe('callOpenRouter', () => {
     expect(JSON.stringify(body)).not.toContain('"k"');
   });
   it('maps problems to reasons', async () => {
+    // a 429 without X-RateLimit-* headers comes from the upstream provider
     expect(await run(reply(429, {}) as unknown as typeof fetch)).toEqual({
       ok: false,
       reason: 'RATE_LIMIT',
+      scope: 'provider',
     });
     expect(await run(reply(500, {}) as unknown as typeof fetch)).toEqual({
       ok: false,
@@ -585,9 +587,101 @@ describe('callOpenRouter: models to try', () => {
   });
   it('the default is a fixed free model with a free fallback only', () => {
     expect(DEFAULT_MODEL).toBe('google/gemma-4-26b-a4b-it:free');
-    expect(FALLBACK_MODELS).toEqual(['google/gemma-4-31b-it:free']);
+    expect(FALLBACK_MODELS).toEqual([
+      'google/gemma-4-31b-it:free',
+      'nvidia/nemotron-3.5-super-vl:free',
+      'dots-studio/dots-3-note-preview:free',
+    ]);
     for (const m of [DEFAULT_MODEL, ...FALLBACK_MODELS])
       expect(m.endsWith(':free')).toBe(true);
     expect(DEFAULT_MODEL).not.toBe('openrouter/free');
+  });
+});
+
+describe('callOpenRouter: who refused a 429 (names and numbers only)', () => {
+  const NOW = 1_700_000_000_000;
+  const refuse = (
+    status: number,
+    body: unknown,
+    headers: Record<string, string> = {},
+  ) =>
+    callOpenRouter({
+      apiKey: 'k',
+      model: 'm/x',
+      input,
+      now: () => NOW,
+      fetchImpl: (async () =>
+        new Response(typeof body === 'string' ? body : JSON.stringify(body), {
+          status,
+          headers,
+        })) as unknown as typeof fetch,
+    });
+
+  it('a 429 from the upstream provider: scope=provider with its name and code, never the message or raw payload', async () => {
+    const r = await refuse(429, {
+      error: {
+        code: 429,
+        message: '비밀 메시지 qwerty',
+        metadata: {
+          provider_name: 'Google AI Studio',
+          provider_code: 429,
+          raw: '제공자 원문 zxcvb',
+        },
+      },
+    });
+    expect(r).toEqual({
+      ok: false,
+      reason: 'RATE_LIMIT',
+      scope: 'provider',
+      provider: 'Google AI Studio',
+      providerCode: 429,
+    });
+    expect(JSON.stringify(r)).not.toMatch(/qwerty|zxcvb/);
+  });
+  it("OpenRouter's own limit: scope=platform with the header numbers, the reset as seconds from now", async () => {
+    const r = await refuse(
+      429,
+      { error: { code: 429, metadata: { error_type: 'rate_limit_exceeded' } } },
+      {
+        'X-RateLimit-Limit': '50',
+        'X-RateLimit-Remaining': '0',
+        'X-RateLimit-Reset': String(NOW + 31_200_000),
+        'Retry-After': '60',
+      },
+    );
+    expect(r).toEqual({
+      ok: false,
+      reason: 'RATE_LIMIT',
+      scope: 'platform',
+      rlLimit: 50,
+      rlRemaining: 0,
+      rlResetIn: 31_200,
+      retryAfter: 60,
+    });
+  });
+  it('a reset time already past is 0, and a body that is not JSON still gives the scope', async () => {
+    const r = await refuse(429, 'Too Many Requests', {
+      'X-RateLimit-Reset': String(NOW - 5000),
+    });
+    expect(r).toMatchObject({ scope: 'platform', rlResetIn: 0 });
+    expect(await refuse(429, 'Too Many Requests')).toMatchObject({
+      reason: 'RATE_LIMIT',
+      scope: 'provider',
+    });
+  });
+  it('another error status keeps its status and the provider name, without a scope', async () => {
+    const r = await refuse(502, {
+      error: {
+        code: 502,
+        metadata: { provider_name: 'Nvidia', provider_code: 'overloaded' },
+      },
+    });
+    expect(r).toEqual({
+      ok: false,
+      reason: 'HTTP',
+      status: 502,
+      provider: 'Nvidia',
+      providerCode: 'overloaded',
+    });
   });
 });

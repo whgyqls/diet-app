@@ -39,6 +39,7 @@ function deps(over: Partial<ExplainDeps> = {}) {
     ),
     consume: vi.fn(async () => true),
     call: vi.fn(async () => ({ ok: true as const, content: GOOD })),
+    refund: vi.fn(async () => {}),
     log: vi.fn(),
     ...over,
   };
@@ -116,7 +117,7 @@ describe('handleExplain', () => {
         )
       ).body,
     ).toMatchObject({
-      reason: 'UNAVAILABLE',
+      reason: 'BUSY',
     });
     expect(
       (
@@ -125,7 +126,7 @@ describe('handleExplain', () => {
         )
       ).body,
     ).toMatchObject({
-      reason: 'LIMIT',
+      reason: 'BUSY',
     });
   });
   it('does not show or cache an answer with a made-up number, efficacy wording or no JSON', async () => {
@@ -210,14 +211,16 @@ describe('handleExplain', () => {
         call: async () => ({ ok: false, reason: 'HTTP', status: 502 }),
       }),
     ).toEqual([
-      '[explain] fallback reason=UNAVAILABLE cause=HTTP status=502 ms=0',
+      '[explain] fallback reason=UNAVAILABLE cause=HTTP status=502 ms=0 refund=yes',
     ]);
     expect(
       await run({ call: async () => ({ ok: false, reason: 'TIMEOUT' }) }),
-    ).toEqual(['[explain] fallback reason=UNAVAILABLE cause=TIMEOUT ms=0']);
+    ).toEqual(['[explain] fallback reason=BUSY cause=TIMEOUT ms=0 refund=yes']);
     expect(
       await run({ call: async () => ({ ok: false, reason: 'RATE_LIMIT' }) }),
-    ).toEqual(['[explain] fallback reason=LIMIT cause=RATE_LIMIT ms=0']);
+    ).toEqual([
+      '[explain] fallback reason=BUSY cause=RATE_LIMIT ms=0 refund=yes',
+    ]);
     expect(
       await run({ call: async () => ({ ok: true, content: '그냥 {문장' }) }),
     ).toEqual(['[explain] fallback reason=INVALID cause=PARSE ms=0']);
@@ -300,6 +303,93 @@ describe('handleExplain', () => {
     await send(d);
     expect((d.log as ReturnType<typeof vi.fn>).mock.calls[0][0]).toBe(
       '[explain] fallback reason=UNAVAILABLE cause=BAD_RESPONSE detail=NO_CHOICES status=502 ms=0',
+    );
+  });
+
+  it("gives the counted call back for failures that are not the user's, once, for the same UTC day", async () => {
+    for (const reason of ['RATE_LIMIT', 'TIMEOUT', 'HTTP', 'NO_KEY'] as const) {
+      const d = deps({ call: async () => ({ ok: false, reason }) });
+      await send(d);
+      expect(d.consume).toHaveBeenCalledTimes(1);
+      expect(d.refund).toHaveBeenCalledTimes(1);
+      expect(d.refund).toHaveBeenCalledWith('user-1', '2026-11-24');
+    }
+  });
+
+  it('keeps the count for a good answer, a cached one and every answer our checks refuse', async () => {
+    const keep = async (over: Partial<ExplainDeps>) => {
+      const d = deps(over);
+      await send(d);
+      return d.refund as ReturnType<typeof vi.fn>;
+    };
+    expect(await keep({})).not.toHaveBeenCalled();
+    expect(
+      await keep({ call: async () => ({ ok: true, content: '그냥 {문장' }) }),
+    ).not.toHaveBeenCalled(); // PARSE
+    expect(
+      await keep({
+        call: async () => ({
+          ok: true,
+          content: '{"text":"닭가슴살 999g이에요. 천천히 드세요."}',
+        }),
+      }),
+    ).not.toHaveBeenCalled(); // NEW_NUMBER
+    expect(
+      await keep({
+        call: async () => ({ ok: true, content: GOOD, finish: 'length' }),
+      }),
+    ).not.toHaveBeenCalled(); // TRUNCATED
+    expect(
+      await keep({
+        call: async () => ({
+          ok: false,
+          reason: 'BAD_RESPONSE',
+          detail: 'CONTENT_EMPTY',
+        }),
+      }),
+    ).not.toHaveBeenCalled();
+    expect(await keep({ consume: async () => false })).not.toHaveBeenCalled(); // our limit
+  });
+
+  it('a cache hit counts nothing and refunds nothing', async () => {
+    const d = deps();
+    await send(d);
+    await send(d);
+    expect(d.consume).toHaveBeenCalledTimes(1);
+    expect(d.refund).not.toHaveBeenCalled();
+  });
+
+  it('still answers when giving the count back fails, and the log says so', async () => {
+    const d = deps({
+      call: async () => ({ ok: false, reason: 'RATE_LIMIT' }),
+      refund: async () => {
+        throw new Error('x');
+      },
+    });
+    const r = await send(d);
+    expect(r.body).toMatchObject({ source: 'fallback', reason: 'BUSY' });
+    expect((d.log as ReturnType<typeof vi.fn>).mock.calls[0][0]).toBe(
+      '[explain] fallback reason=BUSY cause=RATE_LIMIT ms=0 refund=failed',
+    );
+  });
+
+  it('logs who refused a 429 and the limit numbers, and nothing else of the response', async () => {
+    const d = deps({
+      call: async () => ({
+        ok: false,
+        reason: 'RATE_LIMIT',
+        scope: 'provider',
+        provider: 'Google AI Studio',
+        providerCode: 429,
+        rlLimit: 50,
+        rlRemaining: 0,
+        rlResetIn: 31200,
+        retryAfter: 60,
+      }),
+    });
+    await send(d);
+    expect((d.log as ReturnType<typeof vi.fn>).mock.calls[0][0]).toBe(
+      '[explain] fallback reason=BUSY cause=RATE_LIMIT scope=provider provider=Google_AI_Studio provider_code=429 rl_limit=50 rl_remaining=0 rl_reset_in=31200 retry_after=60 ms=0 refund=yes',
     );
   });
 });

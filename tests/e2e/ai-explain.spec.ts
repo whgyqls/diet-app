@@ -83,3 +83,34 @@ test('the server refuses a call without a session', async ({ playwright }) => {
   expect(res.status()).toBe(401);
   await anon.dispose();
 });
+
+test('"AI is busy" says to try again later, a limit says there are no more today', async ({
+  page,
+}) => {
+  const answer = (reason: string) => ({
+    json: {
+      text: '닭가슴살 조합이에요. 합계는 400kcal예요.',
+      source: 'fallback',
+      reason,
+    },
+  });
+  let reason = 'BUSY';
+  await page.route('**/api/explain', (route) => route.fulfill(answer(reason)));
+  await openPlan(page);
+  const card = page.getByRole('article').first();
+  await card.getByRole('button', { name: 'AI 설명 보기' }).click();
+  const result = card.getByTestId('ai-explain-result');
+  await expect(result).toContainText(
+    '지금은 AI가 바빠서 기본 설명을 보여드려요. 잠시 뒤에 다시 눌러 주세요.',
+  );
+  await expect(result).not.toContainText('AI가 쓴 문장');
+
+  // a failure is not remembered: another card, now with our own limit
+  reason = 'LIMIT';
+  const second = page.getByRole('article').nth(1);
+  await second.scrollIntoViewIfNeeded();
+  await second.getByRole('button', { name: 'AI 설명 보기' }).click();
+  await expect(second.getByTestId('ai-explain-result')).toContainText(
+    '오늘은 AI 설명을 더 쓸 수 없어서',
+  );
+});

@@ -29,7 +29,8 @@ export type ExplainInput = {
 };
 
 export type ExplainSource = 'ai' | 'cache' | 'fallback';
-export type FallbackReason = 'LIMIT' | 'UNAVAILABLE' | 'INVALID';
+/** LIMIT: our daily limits. BUSY: the AI side is rate limiting or too slow (try again later). */
+export type FallbackReason = 'LIMIT' | 'BUSY' | 'UNAVAILABLE' | 'INVALID';
 export type ExplainResponse = {
   text: string;
   source: ExplainSource;

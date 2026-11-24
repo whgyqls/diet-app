@@ -49,7 +49,9 @@ export function AiExplain({ request }: { request: ExplainRequest }) {
           ? AI_TEXT.note
           : res.reason === 'LIMIT'
             ? AI_TEXT.fallbackLimit
-            : AI_TEXT.fallbackError}
+            : res.reason === 'BUSY'
+              ? AI_TEXT.fallbackBusy
+              : AI_TEXT.fallbackError}
       </p>
     </div>
   );

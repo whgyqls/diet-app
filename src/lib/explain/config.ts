@@ -10,6 +10,10 @@ export const DEFAULT_MODEL = 'google/gemma-4-26b-a4b-it:free';
 /** Tried in this order when the first model errors (rate limit, provider down). Only free models: a paid one would be billed. */
 export const FALLBACK_MODELS: readonly string[] = [
   'google/gemma-4-31b-it:free',
+  // Other providers, because the Google one (both Gemma models) can be the one rate limiting:
+  // Nvidia, then AtlasCloud. dots-3-note-preview is listed with an expiry date of 2026-12-31.
+  'nvidia/nemotron-3.5-super-vl:free',
+  'dots-studio/dots-3-note-preview:free',
 ];
 export const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 /** Shown to OpenRouter as the app name. Nothing about the user. */

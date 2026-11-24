@@ -5,7 +5,7 @@ import { EXPLAIN_LIMITS, utcDay } from './config';
 import { fallbackText } from './fallback';
 import { cacheKeyText, explainRequestSchema, toInput } from './payload';
 import { checkExplanation, extractExplanation } from './validate';
-import type { CallResult } from './openrouter';
+import type { CallResult, Refusal } from './openrouter';
 import type { ExplainInput, ExplainResponse, FallbackReason } from './types';
 
 export type ExplainDeps = {
@@ -20,6 +20,8 @@ export type ExplainDeps = {
   cachePut: (hash: string, model: string, text: string) => Promise<void>;
   /** True when the call was counted (both daily limits allow it). */
   consume: (userId: string, day: string) => Promise<boolean>;
+  /** Gives one counted call back (a failure that is not the user's). */
+  refund: (userId: string, day: string) => Promise<void>;
   call: (input: ExplainInput, model: string) => Promise<CallResult>;
   /** One log line per fallback (the route passes console.warn). */
   log: (line: string) => void;
@@ -42,7 +44,9 @@ type Why = {
   reasoningTokens?: number;
   /** How long the AI call took, in ms. */
   ms?: number;
-};
+  /** Whether the counted call was given back: yes, or no because giving back failed. */
+  refund?: 'yes' | 'failed';
+} & Refusal;
 
 export function logLine(w: Why): string {
   const parts: [string, string | number | undefined][] = [
@@ -50,11 +54,19 @@ export function logLine(w: Why): string {
     ['cause', w.cause],
     ['detail', w.detail],
     ['status', w.status],
+    ['scope', w.scope],
+    ['provider', w.provider],
+    ['provider_code', w.providerCode],
     ['model', w.model],
     ['finish', w.finish],
     ['tokens', w.tokens],
     ['reasoning_tokens', w.reasoningTokens],
+    ['rl_limit', w.rlLimit],
+    ['rl_remaining', w.rlRemaining],
+    ['rl_reset_in', w.rlResetIn],
+    ['retry_after', w.retryAfter],
     ['ms', w.ms],
+    ['refund', w.refund],
   ];
   return (
     '[explain] fallback ' +
@@ -69,6 +81,9 @@ export type HandlerResult = {
   status: number;
   body: { error: string } | ExplainResponse;
 };
+
+/** Failures of the AI call whose counted call is given back. */
+const REFUNDED = new Set(['RATE_LIMIT', 'TIMEOUT', 'HTTP', 'NO_KEY']);
 
 const error = (status: number, code: string): HandlerResult => ({
   status,
@@ -111,9 +126,10 @@ export async function handleExplain(
   const cached = await deps.cacheGet(hash).catch(() => null);
   if (cached) return { status: 200, body: { text: cached, source: 'cache' } };
 
+  const day = utcDay(deps.now());
   let allowed: boolean;
   try {
-    allowed = await deps.consume(userId, utcDay(deps.now()));
+    allowed = await deps.consume(userId, day);
   } catch {
     return fallback({ reason: 'UNAVAILABLE', cause: 'CONSUME_ERROR' });
   }
@@ -138,14 +154,33 @@ export async function handleExplain(
       detail: res.ok ? undefined : res.detail,
       ...seen,
     });
-  if (!res.ok)
+  if (!res.ok) {
+    // Not the user's doing (the AI side said no, was slow or unreachable, or no key): give the count back.
+    // An answer that came but was refused by our checks (below) stays counted: the AI side did the work.
+    let refund: Why['refund'];
+    if (REFUNDED.has(res.reason)) {
+      refund = await deps.refund(userId, day).then(
+        () => 'yes' as const,
+        () => 'failed' as const,
+      );
+    }
+    const busy = res.reason === 'RATE_LIMIT' || res.reason === 'TIMEOUT';
     return fallback({
-      reason: res.reason === 'RATE_LIMIT' ? 'LIMIT' : 'UNAVAILABLE',
+      reason: busy ? 'BUSY' : 'UNAVAILABLE',
       cause: res.reason,
       detail: res.detail,
       status: res.status,
+      scope: res.scope,
+      provider: res.provider,
+      providerCode: res.providerCode,
+      rlLimit: res.rlLimit,
+      rlRemaining: res.rlRemaining,
+      rlResetIn: res.rlResetIn,
+      retryAfter: res.retryAfter,
+      refund,
       ...seen,
     });
+  }
   const found = extractExplanation(res.content, input);
   if (!found.ok)
     return fallback({

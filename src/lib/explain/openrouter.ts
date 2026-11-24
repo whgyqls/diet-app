@@ -30,7 +30,76 @@ export type CallResult =
       status?: number;
       /** For BAD_RESPONSE: which part was missing; "+REASONING" when there was reasoning text but no content. */
       detail?: string;
-    } & CallMeta);
+    } & CallMeta &
+      Refusal);
+
+/**
+ * Who said no, for the log (names and numbers only; the error message and the provider's raw payload are never
+ * read). `platform` = OpenRouter's own free-model limit (it sends X-RateLimit-* headers), `provider` = a 429
+ * without them, which comes from the upstream provider.
+ */
+export type Refusal = {
+  scope?: 'platform' | 'provider';
+  provider?: string;
+  providerCode?: string | number;
+  rlLimit?: number;
+  rlRemaining?: number;
+  /** Seconds until the platform limit resets. */
+  rlResetIn?: number;
+  /** Seconds, from the Retry-After header. */
+  retryAfter?: number;
+};
+
+const header = (res: Response, name: string): number | undefined => {
+  const n = Number(res.headers.get(name));
+  return res.headers.get(name) !== null && Number.isFinite(n) ? n : undefined;
+};
+
+/** Reads only the provider's name and code, and the rate limit headers, from an error response. */
+async function readRefusal(
+  res: Response,
+  rateLimited: boolean,
+  now: () => number = Date.now,
+): Promise<Refusal> {
+  let meta: Record<string, unknown> | undefined;
+  try {
+    const body = (await res.json()) as {
+      error?: { metadata?: Record<string, unknown> };
+    } | null;
+    meta = body?.error?.metadata;
+  } catch {
+    // not JSON: the headers still tell something
+  }
+  const name = meta?.provider_name;
+  const code = meta?.provider_code;
+  const provider = typeof name === 'string' ? name : undefined;
+  const providerCode =
+    typeof code === 'number' || typeof code === 'string' ? code : undefined;
+  const rlLimit = header(res, 'x-ratelimit-limit');
+  const rlRemaining = header(res, 'x-ratelimit-remaining');
+  const reset = header(res, 'x-ratelimit-reset');
+  const platform =
+    rlLimit !== undefined || rlRemaining !== undefined || reset !== undefined;
+  return omitUndefined({
+    // OpenRouter's own free-model limit always sends X-RateLimit-* headers; a 429 without them comes from the
+    // upstream provider (its name and code are logged when OpenRouter passes them on).
+    scope: rateLimited
+      ? platform
+        ? ('platform' as const)
+        : ('provider' as const)
+      : undefined,
+    provider,
+    providerCode,
+    rlLimit,
+    rlRemaining,
+    // X-RateLimit-Reset is milliseconds since the Unix epoch
+    rlResetIn:
+      reset === undefined
+        ? undefined
+        : Math.max(0, Math.round((reset - now()) / 1000)),
+    retryAfter: header(res, 'retry-after'),
+  });
+}
 
 const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
 const num = (v: unknown) =>
@@ -46,6 +115,7 @@ export async function callOpenRouter(args: {
   input: ExplainInput;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
+  now?: () => number;
 }): Promise<CallResult> {
   const { apiKey, model, input } = args;
   if (!apiKey) return { ok: false, reason: 'NO_KEY' };
@@ -75,8 +145,12 @@ export async function callOpenRouter(args: {
         args.timeoutMs ?? EXPLAIN_LIMITS.serverTimeoutMs,
       ),
     });
-    if (res.status === 429) return { ok: false, reason: 'RATE_LIMIT' };
-    if (!res.ok) return { ok: false, reason: 'HTTP', status: res.status };
+    if (!res.ok) {
+      const refusal = await readRefusal(res, res.status === 429, args.now);
+      return res.status === 429
+        ? { ok: false, reason: 'RATE_LIMIT', ...refusal }
+        : { ok: false, reason: 'HTTP', status: res.status, ...refusal };
+    }
     const b = (await res.json()) as Record<string, unknown> | null;
     const choice = (b?.choices as Record<string, unknown>[] | undefined)?.[0];
     const message = choice?.message as Record<string, unknown> | undefined;
