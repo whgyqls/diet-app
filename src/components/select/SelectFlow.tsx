@@ -17,6 +17,7 @@ import { parseProfile } from '@/lib/profile';
 import { STEPS } from '@/lib/ui-labels';
 import type { Food } from '@/types/food';
 import type { DietStyle, Selection } from '@/types/nutrition';
+import { LegacyRestore } from '@/components/account/LegacyRestore';
 import { ConfirmDialog } from './ConfirmDialog';
 import { FactsSheet } from './FactsSheet';
 import { FoodCard } from './FoodCard';
@@ -151,6 +152,7 @@ function Flow() {
           전체 초기화
         </button>
       </div>
+      <LegacyRestore />
       {!parseProfile(s.profile) && (
         <p className="rounded-lg bg-amber-100 p-3 text-sm text-amber-900">
           프로필이 아직 없어요.{' '}

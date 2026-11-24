@@ -8,15 +8,18 @@ export function UndoToast({
   message,
   onUndo,
   onClose,
+  durationMs = UNDO_TOAST_MS,
 }: {
   message: string;
   onUndo: () => void;
   onClose: () => void;
+  /** Time left to undo (default: the full UNDO_TOAST_MS). */
+  durationMs?: number;
 }) {
   useEffect(() => {
-    const t = window.setTimeout(onClose, UNDO_TOAST_MS);
+    const t = window.setTimeout(onClose, durationMs);
     return () => window.clearTimeout(t);
-  }, [onClose]);
+  }, [onClose, durationMs]);
 
   return (
     <div

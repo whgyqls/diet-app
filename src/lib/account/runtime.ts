@@ -30,6 +30,22 @@ import {
   staleCacheKeys,
 } from '@/lib/supabase/cacheOwner';
 import { createSupabaseSavedStore } from '@/lib/supabase/savedRemote';
+import { newUuid } from '@/lib/id/newUuid';
+import {
+  LEGACY_CLAIM_KEY,
+  claimOwner,
+  parseClaim,
+} from '@/lib/legacy/legacyClaim';
+import { planRestore, type RestorePlan } from '@/lib/legacy/planRestore';
+import { restoreUi } from '@/lib/legacy/restoreUi';
+import { isLegacyEmpty, readLegacyRecord } from '@/lib/legacy/readLegacy';
+import {
+  runRestore,
+  undoRestore,
+  type RestoreDeps,
+  type UndoInfo,
+} from '@/lib/legacy/restoreRunner';
+import { LEGACY_SAVED_KEY, LEGACY_STATE_KEY } from '@/lib/supabase/cacheOwner';
 
 export type CacheStorage = StateStorage & { keys: () => string[] };
 type AppStoreApi = ReturnType<typeof createAppStore>;
@@ -43,7 +59,27 @@ export type AccountSnapshot = {
   error: string | null;
   /** The ★ store of the signed-in user; an inert one while the session is unknown or nobody is signed in. */
   savedStore: SavedStore;
+  /** When this account loaded its previous record (ms), or null: the button "이전 기록 불러오기" shows while null. */
+  legacyImportedAt: number | null;
 };
+
+/** What the button would do right now (PLAN.md 9.2). */
+export type LegacyOffer = {
+  plan: RestorePlan;
+  dropped: { kits: number; saved: number };
+  /** An earlier run of this account stopped: the next one finishes it and cannot be undone. */
+  resumed: boolean;
+};
+
+export type RestoreResult =
+  | {
+      status: 'done';
+      plan: RestorePlan;
+      dropped: { kits: number; saved: number };
+      /** Can be taken back (only a restore that ran in one go). */
+      undoable: boolean;
+    }
+  | { status: 'failed'; wrote: boolean };
 
 const NO_SAVED: SavedCombo[] = [];
 
@@ -75,6 +111,7 @@ export const INITIAL_SNAPSHOT: AccountSnapshot = {
   save: 'idle',
   error: null,
   savedStore: pendingSavedStore,
+  legacyImportedAt: null,
 };
 
 const memoryStorage = (): StateStorage => {
@@ -111,6 +148,8 @@ export function createAccountRuntime(deps: {
   let activeUid: string | null = null; // the uid being set up or set up
   let token = 0;
   let detached = false;
+  let restoring: Promise<RestoreResult> | null = null; // one restore at a time, however often the button is pressed
+  let lastUndo: UndoInfo | null = null;
 
   const teardown = () => {
     current?.unsubscribe();
@@ -134,6 +173,8 @@ export function createAccountRuntime(deps: {
     const mine = ++token;
     teardown();
     leaveAccount();
+    restoreUi.reset(); // the result line and the undo window of the previous account are gone
+    lastUndo = null;
 
     if (uid === null) {
       purgeCaches(null);
@@ -144,6 +185,7 @@ export function createAccountRuntime(deps: {
         save: 'idle',
         error: null,
         savedStore: emptySavedStore,
+        legacyImportedAt: null,
       });
       return;
     }
@@ -170,6 +212,7 @@ export function createAccountRuntime(deps: {
         phase: sync.phase(),
         save: sync.saveStatus(),
         error: sync.lastError(),
+        legacyImportedAt: sync.legacyImportedAt(),
       }),
     );
     current = { sync, unsubscribe };
@@ -180,8 +223,113 @@ export function createAccountRuntime(deps: {
       save: 'idle',
       error: null,
       savedStore,
+      legacyImportedAt: null,
     });
     await sync.start();
+  }
+
+  // ---- "이전 기록 불러오기" (PLAN.md 9.2) ----
+
+  const accountData = () => {
+    const st = appStore.getState();
+    return {
+      profile: st.profile,
+      styles: st.styles,
+      overrides: st.overrides,
+      selection: st.selection,
+      kits: st.kits,
+      savedSignatures: new Set(
+        snapshot.savedStore.list().map((x) => x.signature),
+      ),
+    };
+  };
+
+  function legacyOffer(): LegacyOffer | null {
+    const uid = snapshot.uid;
+    if (
+      !uid ||
+      snapshot.session !== 'signed-in' ||
+      snapshot.phase !== 'ready' ||
+      snapshot.savedStore.status() !== 'ready' ||
+      snapshot.legacyImportedAt !== null
+    )
+      return null;
+    const owner = claimOwner(
+      parseClaim(storage.getItem(LEGACY_CLAIM_KEY)),
+      uid,
+    );
+    if (owner === 'other') return null; // another account's record: not read at all
+    const record = readLegacyRecord(
+      storage.getItem(LEGACY_STATE_KEY),
+      storage.getItem(LEGACY_SAVED_KEY),
+      KNOWN_IDS,
+    );
+    if (isLegacyEmpty(record)) return null;
+    return {
+      plan: planRestore(record, accountData()),
+      dropped: record.dropped,
+      resumed: owner === 'mine',
+    };
+  }
+
+  const restoreDeps = (uid: string): RestoreDeps => {
+    const st = appStore.getState();
+    return {
+      client,
+      uid,
+      savedStore: snapshot.savedStore,
+      storage,
+      before: {
+        settings: {
+          profile: st.profile,
+          styles: st.styles,
+          overrides: st.overrides,
+        },
+        selection: st.selection,
+      },
+      reload: async () => {
+        await current?.sync.reload();
+        await snapshot.savedStore.refresh();
+      },
+      newId: () => newUuid(),
+    };
+  };
+
+  async function restoreLegacy(): Promise<RestoreResult> {
+    if (restoring) return restoring; // a second press joins the run in progress
+    const run = (async (): Promise<RestoreResult> => {
+      const uid = snapshot.uid;
+      if (!uid) return { status: 'failed', wrote: false };
+      // edits that are still waiting for the save go first, so the plan is made from what the server has
+      await current?.sync.flush().catch(() => undefined);
+      const offer = legacyOffer();
+      if (!offer) return { status: 'failed', wrote: false };
+      const out = await runRestore(restoreDeps(uid), offer.plan, offer.resumed);
+      if (out.status === 'failed')
+        return { status: 'failed', wrote: out.wrote };
+      lastUndo = out.undo;
+      return {
+        status: 'done',
+        plan: offer.plan,
+        dropped: offer.dropped,
+        undoable: out.undo !== null,
+      };
+    })();
+    restoring = run;
+    try {
+      return await run;
+    } finally {
+      restoring = null;
+    }
+  }
+
+  /** Takes the last restore back (only possible for one that ran in one go). Throws when a step fails. */
+  async function undoLegacy(): Promise<void> {
+    const uid = snapshot.uid;
+    const undo = lastUndo;
+    if (!uid || !undo) return;
+    await undoRestore(restoreDeps(uid), undo);
+    lastUndo = null;
   }
 
   return {
@@ -229,5 +377,8 @@ export function createAccountRuntime(deps: {
     },
     clearError: () => current?.sync.clearError(),
     hasUnsavedChanges: () => current?.sync.hasUnsavedChanges() ?? false,
+    legacyOffer,
+    restoreLegacy,
+    undoLegacy,
   };
 }

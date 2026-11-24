@@ -32,14 +32,26 @@ export type SavedCombo = {
   totals: NutrientTotals;
 };
 
-/** Same foods with the same weights = same signature, whatever the item order. */
-export function comboSignature(c: MealCombo): string {
-  const part = (list: MealCombo['items']) =>
+/**
+ * Same foods with the same weights = same signature, whatever the item order. Shared by the live combo and a
+ * stored snapshot, so a starred card and a restored ★ always agree (comboSignature below, "이전 기록 불러오기").
+ */
+export function signatureOf(
+  items: readonly { foodId: string; grams: number }[],
+  oils: readonly { foodId: string; grams: number }[],
+): string {
+  const part = (list: readonly { foodId: string; grams: number }[]) =>
     list
-      .map((i) => `${i.food.id}:${i.grams}`)
+      .map((i) => `${i.foodId}:${i.grams}`)
       .sort()
       .join(',');
-  return `${part(c.items)}|${part(c.oils)}`;
+  return `${part(items)}|${part(oils)}`;
+}
+
+export function comboSignature(c: MealCombo): string {
+  const parts = (list: MealCombo['items']) =>
+    list.map((i) => ({ foodId: i.food.id, grams: i.grams }));
+  return signatureOf(parts(c.items), parts(c.oils));
 }
 
 export function snapshotOf(

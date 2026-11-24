@@ -26,6 +26,7 @@ import {
   SEASONINGS,
   selectAll,
 } from '@/lib/nutrition/test-fixtures';
+import { LEGACY_CLAIM_KEY } from '@/lib/legacy/legacyClaim';
 import {
   createAccountRuntime,
   pendingSavedStore,
@@ -547,5 +548,79 @@ describe('account cache guard', () => {
     expect(guarded.getItem(accountCacheKey(A))).toBe('mine');
     guarded.removeItem(accountCacheKey(A));
     expect(storage.data.has(accountCacheKey(A))).toBe(false);
+  });
+});
+
+describe('account runtime: the "이전 기록 불러오기" offer (PLAN.md 9.2)', () => {
+  const OLD = {
+    [LEGACY_STATE_KEY]: LEGACY_STATE,
+    [LEGACY_SAVED_KEY]: LEGACY_SAVED,
+  };
+  const claim = (uid: string) => JSON.stringify({ uid, at: 1 });
+
+  it('is offered to a signed-in account when the browser holds a record nobody claimed', async () => {
+    const { runtime } = setup({ storage: OLD });
+    expect(runtime.legacyOffer()).toBeNull(); // not signed in yet
+    await runtime.applySession(A);
+    const offer = runtime.legacyOffer();
+    expect(offer).not.toBeNull();
+    expect(offer!.resumed).toBe(false);
+    expect(offer!.plan.hasChanges).toBe(true);
+  });
+
+  it('is not offered when the record is empty or broken', async () => {
+    for (const storage of [
+      {} as Record<string, string>,
+      { [LEGACY_STATE_KEY]: '{{' },
+      { [LEGACY_STATE_KEY]: JSON.stringify({ version: 2, state: {} }) },
+    ]) {
+      const { runtime } = setup({ storage });
+      await runtime.applySession(A);
+      expect(runtime.legacyOffer()).toBeNull();
+    }
+  });
+
+  it('is not offered when another account holds the claim, and the record is not even read', async () => {
+    const { runtime, storage } = setup({
+      storage: { ...OLD, [LEGACY_CLAIM_KEY]: claim(B) },
+    });
+    await runtime.applySession(A);
+    const read = vi.spyOn(storage, 'getItem');
+    expect(runtime.legacyOffer()).toBeNull();
+    expect(read).not.toHaveBeenCalledWith(LEGACY_STATE_KEY);
+    expect(read).not.toHaveBeenCalledWith(LEGACY_SAVED_KEY);
+  });
+
+  it('my own claim: offered again and marked as resumed (a restore of mine stopped half way)', async () => {
+    const { runtime } = setup({
+      storage: { ...OLD, [LEGACY_CLAIM_KEY]: claim(A) },
+    });
+    await runtime.applySession(A);
+    expect(runtime.legacyOffer()?.resumed).toBe(true);
+  });
+
+  it('is not offered once the account has loaded a record (on any device)', async () => {
+    const { runtime } = setup({
+      storage: OLD,
+      tables: {
+        profiles: [
+          { ...profileRow(A, 60), legacy_imported_at: '2026-11-24T00:00:00Z' },
+        ],
+        food_prefs: [],
+      },
+    });
+    await runtime.applySession(A);
+    expect(runtime.getSnapshot().legacyImportedAt).not.toBeNull();
+    expect(runtime.legacyOffer()).toBeNull();
+  });
+
+  it('a new account does not get the old record copied: its data stays empty until the button is used', async () => {
+    const { appStore, runtime } = setup({
+      storage: OLD,
+      tables: { profiles: [profileRow(A, 60)], food_prefs: [] },
+    });
+    await runtime.applySession(A);
+    expect(appStore.getState().selection.foods).toEqual({});
+    expect(appStore.getState().profile.weightKg).toBe(60); // the server's, not the old record's 99
   });
 });
