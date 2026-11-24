@@ -25,7 +25,10 @@ test.describe('signed out', () => {
       'Netlify',
       'Google',
       'OpenRouter',
+      'NVIDIA',
+      'AtlasCloud',
       'AI 설명',
+      '사용 횟수에서 빼 줘요',
       '설정 → 계정 삭제',
     ])
       await expect(notice).toContainText(text);
