@@ -11,6 +11,8 @@ export type PlanInputs = {
   styles: DietStyle[];
   overrides: TargetOverrides;
   selection: Selection;
+  /** Food ids that must be in the day. Absent or empty = no requirement (the fingerprint is then unchanged). */
+  includeFoods?: string[];
 };
 
 /** JSON with object keys sorted, so key order never changes the result. */
@@ -26,5 +28,15 @@ function stable(v: unknown): unknown {
 }
 
 export function requestFingerprint(i: PlanInputs): string {
-  return JSON.stringify(stable({ ...i, styles: [...i.styles].sort() }));
+  const { includeFoods, ...rest } = i;
+  return JSON.stringify(
+    stable({
+      ...rest,
+      styles: [...i.styles].sort(),
+      // Only added when used, so fingerprints made without it stay the same.
+      ...(includeFoods && includeFoods.length > 0
+        ? { includeFoods: [...includeFoods].sort() }
+        : {}),
+    }),
+  );
 }

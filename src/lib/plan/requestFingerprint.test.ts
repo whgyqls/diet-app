@@ -52,4 +52,17 @@ describe('requestFingerprint', () => {
       requestFingerprint(inputs),
     );
   });
+
+  it('an empty or missing includeFoods leaves the fingerprint unchanged', () => {
+    expect(requestFingerprint({ ...inputs, includeFoods: [] })).toBe(
+      requestFingerprint(inputs),
+    );
+    expect(requestFingerprint(inputs)).not.toContain('includeFoods');
+  });
+
+  it('includeFoods changes the fingerprint and its order does not matter', () => {
+    const a = requestFingerprint({ ...inputs, includeFoods: ['x', 'y'] });
+    expect(a).not.toBe(requestFingerprint(inputs));
+    expect(requestFingerprint({ ...inputs, includeFoods: ['y', 'x'] })).toBe(a);
+  });
 });

@@ -14,6 +14,7 @@ import {
   selectAll,
   toggleItem,
 } from '@/lib/selection/selection';
+import type { DropReason } from '@/lib/nutrition/includeFoods';
 import { KNOWN_IDS as KNOWN, OIL_IDS } from '@/lib/data/knownIds';
 import { newUuid } from '@/lib/id/newUuid';
 import {
@@ -46,6 +47,16 @@ export type AppState = {
   selection: Selection;
   step: number;
   kits: IngredientKit[];
+  /** Foods the user wants in today's plan. Session only: not persisted, so a reload clears it. */
+  includeFoods: string[];
+  setIncludeFoods: (ids: string[]) => void;
+  /** Foods taken out of includeFoods (not selected any more, left out by a style); shown until closed. */
+  includeDropped: { id: string; reason: DropReason }[];
+  dropIncludes: (
+    kept: string[],
+    dropped: { id: string; reason: DropReason }[],
+  ) => void;
+  clearIncludeDropped: () => void;
   /** Whose data this is (the signed-in user's id). Stored with the per-user cache and checked when it is read. */
   ownerUid: string | null;
   setOwner: (uid: string | null) => void;
@@ -83,6 +94,12 @@ export function createAppStore(storage: StateStorage = safeLocalStorage()) {
         selection: EMPTY_SELECTION,
         step: DEFAULT_STEP,
         kits: [],
+        includeFoods: [],
+        setIncludeFoods: (includeFoods) => set({ includeFoods }),
+        includeDropped: [],
+        dropIncludes: (kept, dropped) =>
+          set({ includeFoods: kept, includeDropped: dropped }),
+        clearIncludeDropped: () => set({ includeDropped: [] }),
         ownerUid: null,
         setOwner: (ownerUid) => set({ ownerUid }),
         resetAccountData: () =>
@@ -93,6 +110,8 @@ export function createAppStore(storage: StateStorage = safeLocalStorage()) {
             selection: EMPTY_SELECTION,
             step: DEFAULT_STEP,
             kits: [],
+            includeFoods: [],
+            includeDropped: [],
             ownerUid: null,
           }),
         setProfile: (patch) =>

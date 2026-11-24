@@ -415,6 +415,13 @@ export const COMPARE_MAX = 3;
 export const LOCK_MAX_FIBERS = 2;
 
 export const COMBOS_PER_MEAL = 5;
+/** Foods of each category one meal holds; a "must include" list can have at most this many per meal of the day. */
+export const INCLUDE_PER_MEAL_MAX = {
+  protein: 1,
+  carb: 1,
+  fiber: 2,
+  fat: 1,
+} as const;
 /** Vegetable sets kept per meal before combining with proteins/carbs/fats (keeps generation fast). */
 export const FIBER_SETS_PER_MEAL = 12;
 /** Penalty per vegetable shared with an already-kept set, so the kept sets are not all built on one vegetable. */

@@ -135,3 +135,42 @@ export const NOTICE_TEXT = {
  */
 export const ACCOUNT_DATA_TEXT =
   '프로필, 재료 선택, 내 재료 세트, 저장한 조합(★)';
+
+// ---- Plan screen: foods that must be in the day (Phase 6b) ----
+export const INCLUDE_TEXT = {
+  title: '꼭 넣을 재료',
+  empty: '오늘 꼭 먹고 싶은 재료가 있나요? 하루 식단에 최소 1번 넣어 볼게요.',
+  open: '꼭 넣을 재료 고르기',
+  change: '바꾸기',
+  sheetNote:
+    '적용하면 추천을 새로 계산해요. 고정·비교 중인 조합은 초기화돼요. 기름은 고를 수 없어요.',
+  apply: '적용하기',
+  missingTag: '못 넣음',
+  noSelected: '고른 재료가 없어요. 먼저 재료를 골라 주세요.',
+} as const;
+export const INCLUDE_CATEGORY_LABELS = {
+  protein: '단백질',
+  carb: '탄수화물',
+  fiber: '식이섬유',
+  fat: '지방원',
+} as const;
+export const includeFullText = (
+  category: keyof typeof INCLUDE_CATEGORY_LABELS,
+  max: number,
+) =>
+  `${INCLUDE_CATEGORY_LABELS[category]}은(는) 하루 끼니 수만큼, 최대 ${max}개까지 넣을 수 있어요.`;
+export const includeMissingText = (names: string[]) =>
+  `${names.join('·')}을(를) 넣은 조합을 찾지 못했어요. 다른 재료·스타일 설정과 함께 맞추기 어려운 조합일 수 있어요. 해당 재료를 🔒로 고정하거나 재료·스타일을 바꿔 보세요.`;
+export const includeDroppedText = (
+  items: {
+    name: string;
+    reason: 'NOT_SELECTED' | 'STYLE_EXCLUDED' | 'UNKNOWN';
+  }[],
+) =>
+  items
+    .map((i) =>
+      i.reason === 'STYLE_EXCLUDED'
+        ? `${i.name}은(는) 선택한 스타일에서 제외돼서 꼭 넣을 재료에서 뺐어요.`
+        : `${i.name}을(를) 선택에서 뺐어서 꼭 넣을 재료에서도 뺐어요.`,
+    )
+    .join(' ');

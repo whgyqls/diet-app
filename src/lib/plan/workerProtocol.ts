@@ -76,7 +76,13 @@ function runDay(req: DayRequestMsg): WorkerResponse {
     selection: inputs.selection,
     profile: inputs.profile,
     refYear: req.refYear,
-    conditions: { styles: inputs.styles, overrides: inputs.overrides },
+    conditions: {
+      styles: inputs.styles,
+      overrides: inputs.overrides,
+      ...(inputs.includeFoods?.length
+        ? { includeFoods: inputs.includeFoods }
+        : {}),
+    },
   };
   const plan = generateDayPlan(dayReq);
   const setup = daySetup(dayReq);

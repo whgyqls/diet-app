@@ -76,6 +76,24 @@ describe('runWorkerRequest', () => {
     expect(res.base.includeFoods).toEqual([]);
   });
 
+  it('day: includeFoods go to the engine and the base keeps them', () => {
+    const base = {
+      profile,
+      styles: [],
+      overrides: {},
+      selection: selectAll(),
+    };
+    const res = runWorkerRequest({
+      kind: 'day',
+      id: 2,
+      refYear: 2026,
+      inputs: { ...base, includeFoods: ['salmon'] },
+    });
+    if (!res.ok || res.kind !== 'day') throw new Error('expected a day result');
+    expect(res.base.includeFoods).toEqual(['salmon']);
+    expect(res.plan.missingIncludes).toEqual([]);
+  });
+
   it('day: an engine failure reason comes back inside the plan, not as an error', () => {
     const res = runWorkerRequest({
       kind: 'day',

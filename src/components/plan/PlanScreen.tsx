@@ -18,6 +18,7 @@ import {
 } from '@/lib/plan/requestFingerprint';
 import { usePlanWorker } from '@/lib/plan/usePlanWorker';
 import { useSavedCombos } from '@/lib/plan/useSavedCombos';
+import { effectiveIncludes } from '@/lib/nutrition/includeFoods';
 import { selectionProblems } from '@/lib/selection/selection';
 import { useAppStore } from '@/lib/store/appStore';
 import { useHydrated } from '@/lib/store/useHydrated';
@@ -30,6 +31,8 @@ import { ComboCard } from './ComboCard';
 import { ComboCarousel } from './ComboCarousel';
 import { DaySummaryBars } from './DaySummaryBars';
 import { FlagList } from './FlagList';
+import { IncludeFoodsPanel } from './IncludeFoodsPanel';
+import { IncludeFoodsSheet } from './IncludeFoodsSheet';
 import { RepeatNotice } from './RepeatNotice';
 import { SwapSheet } from './SwapSheet';
 
@@ -83,6 +86,13 @@ function Plan() {
       ),
     [s.selection, s.styles, profile],
   );
+  const includes = useMemo(
+    () =>
+      effectiveIncludes(s.includeFoods, s.selection, FOODS, (f) =>
+        isFoodExcludedByStyles(f, s.styles, profile?.goal ?? 'maintain'),
+      ),
+    [s.includeFoods, s.selection, s.styles, profile],
+  );
   const inputs: PlanInputs | null = useMemo(
     () =>
       profile && problems.length === 0
@@ -91,10 +101,18 @@ function Plan() {
             styles: s.styles,
             overrides: s.overrides,
             selection: s.selection,
+            includeFoods: includes.kept,
           }
         : null,
-    [profile, problems, s.styles, s.overrides, s.selection],
+    [profile, problems, s.styles, s.overrides, s.selection, includes.kept],
   );
+  // Foods that can no longer be asked for are removed from the store; the reason stays on screen until closed.
+  const { setIncludeFoods, dropIncludes, clearIncludeDropped } = s;
+  useEffect(() => {
+    if (includes.dropped.length > 0)
+      dropIncludes(includes.kept, includes.dropped);
+  }, [includes, dropIncludes]);
+  const [includeOpen, setIncludeOpen] = useState(false);
   const fingerprint = useMemo(
     () => (inputs ? requestFingerprint(inputs) : null),
     [inputs],
@@ -231,6 +249,16 @@ function Plan() {
       ) : (
         <>
           <DaySummaryBars plan={state.day} />
+          <IncludeFoodsPanel
+            ids={includes.kept}
+            missing={state.day.missingIncludes}
+            dropped={s.includeDropped}
+            onOpen={() => setIncludeOpen(true)}
+            onRemove={(id) =>
+              setIncludeFoods(includes.kept.filter((x) => x !== id))
+            }
+            onDismissDropped={clearIncludeDropped}
+          />
           <FlagList plan={state.day} />
           <div
             role="tablist"
@@ -382,6 +410,19 @@ function Plan() {
           {DISCLAIMER}
         </p>
       </div>
+      {includeOpen && (
+        <IncludeFoodsSheet
+          initial={includes.kept}
+          selection={s.selection}
+          mealsPerDay={profile.mealsPerDay}
+          isExcluded={(f) => isFoodExcludedByStyles(f, s.styles, profile.goal)}
+          onApply={(ids) => {
+            setIncludeFoods(ids);
+            setIncludeOpen(false);
+          }}
+          onClose={() => setIncludeOpen(false)}
+        />
+      )}
       {swap && swapMeal && swapCard && (
         <SwapSheet
           combo={swapCard.combo}
