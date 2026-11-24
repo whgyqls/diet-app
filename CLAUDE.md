@@ -13,7 +13,7 @@
 - Next.js(App Router) + TypeScript(strict) + Tailwind CSS
 - Supabase(Auth, Postgres, RLS). 마이그레이션은 `supabase/migrations/`에 SQL로.
 - 테스트: Vitest(로직), Playwright(화면 흐름)
-- AI 설명: `@anthropic-ai/sdk`, 서버 라우트(`src/app/api/explain/route.ts`)에서만 호출. 모델은 미정: Phase 6에서 `claude-haiku-5-5` / `claude-sonnet-5-5` / `claude-opus-5-5` 설명을 비교한 뒤 사용자가 고른다(모델 ID는 상수 하나로 관리, 임의로 정하지 말 것). `output_config.effort: "low"`, 구조화 출력으로 JSON 검증, `stop_reason`이 `refusal`이면 설명 없이 처리. 코드를 쓰기 전에 `/claude-api` 스킬 문서를 확인할 것.
+- AI 설명: OpenRouter의 OpenAI 호환 chat completions를 `fetch`로 호출한다(새 패키지 없음). 서버 라우트(`src/app/api/explain/route.ts`)에서만 호출하고, 키 `OPENROUTER_API_KEY`는 서버 전용이다(`NEXT_PUBLIC_` 금지). 모델 이름은 `src/lib/explain/config.ts`의 `DEFAULT_MODEL`(처음엔 `openrouter/free`)과 환경변수 `OPENROUTER_MODEL`, 이 한 곳에서만 바꾼다. AI에는 재료 이름·분량·영양 합계·양념·목표 종류(감량·유지·근육 증가)만 보내고 이메일·계정 ID·몸무게·나이·목표 숫자는 보내지 않는다. 같은 조합은 캐시, 사용자별·사이트 전체 하루 호출 한도, 서버 대기 8초, 실패하거나 검증에서 탈락하면 AI 없는 기본 문장을 쓴다. 답의 숫자는 입력값만 허용하고 효능 표현은 걸러낸다(`src/lib/explain/validate.ts`).
 
 ## 폴더 구조
 ```
@@ -45,5 +45,5 @@ tests/e2e/            Playwright
 ## 금지
 - `.env*` 파일 커밋, 비밀값을 코드에 하드코딩
 - 테스트를 통과시키려고 테스트를 삭제하거나 기대값을 임의로 바꾸기
-- 클라이언트 코드에서 Anthropic API 직접 호출
+- 클라이언트 코드에서 OpenRouter(AI) API 직접 호출, AI 요청에 사용자 정보(이메일·계정 ID·신체 정보·목표 숫자) 넣기
 - 화면·AI 설명 문구에 "대사 개선", "혈당 개선" 같은 효능 표현 쓰기 (질병 예방·치료 효능 표현도 마찬가지)
