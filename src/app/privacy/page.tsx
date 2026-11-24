@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { BackNav } from '@/components/BackNav';
 import { ACCOUNT_DATA_TEXT } from '@/lib/ui-labels';
 
 export const metadata: Metadata = { title: '개인정보 안내 · 원물 식단' };
@@ -13,7 +14,8 @@ export const metadata: Metadata = { title: '개인정보 안내 · 원물 식단
 export default function Page() {
   return (
     <main className="mx-auto w-full max-w-md p-4 pb-16">
-      <h1 className="text-xl font-bold">개인정보 안내</h1>
+      <BackNav fallback="/" flush />
+      <h1 className="mt-2 text-xl font-bold">개인정보 안내</h1>
       <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
         시행일 2026-11-25
       </p>
