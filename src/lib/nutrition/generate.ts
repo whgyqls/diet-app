@@ -414,6 +414,7 @@ type DayPick = {
   idx: number[];
   missing: number; // includeFoods not in the day
   kcalShort: number; // how far the day is below KCAL_FILL_MIN_RATIO of the kcal target (0 = reached)
+  healthOk: boolean; // cholesterol and saturated fat are within their caps
   violated: number; // how many day limits are broken
   groups: number;
   repeats: number;
@@ -421,15 +422,24 @@ type DayPick = {
 };
 
 /**
- * Lexicographic: fewer missing includeFoods, reaching KCAL_FILL_MIN_RATIO of the kcal target, fewer broken
- * day limits, more protein groups, fewer repeated foods, lower total. Limits count as broken/not (not by how much), so a limit no option can meet (e.g.
+ * Lexicographic: fewer missing includeFoods, then fillTier (kcal minimum reached without repeats, reached with
+ * repeats, not reached), fewer broken day limits, more protein groups, fewer repeated foods, lower total. Limits count as broken/not (not by how much), so a limit no option can meet (e.g.
  * 100 g carbs with no carb food selected) does not override variety; how far it is missed still weighs in
  * `total`.
  */
+/**
+ * 0 = reaches the kcal minimum with no food repeated across the meals and cholesterol and saturated fat within
+ * their caps, 1 = reaches it otherwise (a food is repeated, or one of those two caps is broken), 2 = below it. Reaching the kcal minimum beats variety, but a day that reaches it without repeating wins.
+ */
+function fillTier(p: DayPick): 0 | 1 | 2 {
+  if (p.kcalShort > 0) return 2;
+  return p.repeats === 0 && p.healthOk ? 0 : 1;
+}
+
 function betterDay(a: DayPick, b: DayPick | undefined): boolean {
   if (!b) return true;
   if (a.missing !== b.missing) return a.missing < b.missing;
-  if (a.kcalShort > 0 !== b.kcalShort > 0) return a.kcalShort === 0;
+  if (fillTier(a) !== fillTier(b)) return fillTier(a) < fillTier(b);
   if (a.violated !== b.violated) return a.violated < b.violated;
   if (a.groups !== b.groups) return a.groups > b.groups;
   if (a.repeats !== b.repeats) return a.repeats < b.repeats;
@@ -442,6 +452,10 @@ function betterDay(a: DayPick, b: DayPick | undefined): boolean {
  * micronutrient (except vitamin D) at least 90% of its KDRI value.
  * Carb, fat and saturated-fat shares all use the kcal actually eaten.
  */
+/** Positions in the array dayLimitExcess returns (the first five; the rest are micronutrients). */
+const LIMIT_SAT_FAT = 1;
+const LIMIT_CHOLESTEROL = 4;
+
 function dayLimitExcess(
   day: NutrientTotals,
   t: DayTargets,
@@ -473,7 +487,8 @@ function dayLimitExcess(
 /**
  * Index per meal. In order of priority:
  * (0) as few missing includeFoods as possible,
- * (0b) the day reaches KCAL_FILL_MIN_RATIO of the kcal target (when some option can),
+ * (0b) the day reaches KCAL_FILL_MIN_RATIO of the kcal target without repeating a food, else reaches it
+ *      with repeats, else not (fillTier; when some option can),
  * (1) as few broken day limits (dayLimitExcess) as possible,
  * (2) as many different protein groups as possible,
  * (3) as few foods repeated across meals as possible (protein, carb, vegetables, fat source),
@@ -506,6 +521,7 @@ function chooseDay(
         idx: [...idx],
         missing: includeFoods.filter((id) => !foods.includes(id)).length,
         kcalShort,
+        healthOk: !(excess[LIMIT_SAT_FAT] > 0 || excess[LIMIT_CHOLESTEROL] > 0),
         violated: excess.filter((e) => e > 0).length,
         groups: new Set(chosen.map(comboProteinGroup)).size,
         repeats: foods.length - new Set(foods).size,
