@@ -181,3 +181,64 @@ test('the API refuses a request without a session, with a foreign Origin, and ig
     }
   });
 });
+
+// What stays in this browser after a deletion depends on who holds the claim on the old pre-login record
+// (PLAN.md 9.2): nobody, the deleted account, or another account.
+const OTHER_ACCOUNT = '99999999-9999-4999-8999-999999999999';
+const CLAIM_CASES: {
+  name: string;
+  claimOf: (uid: string) => string | null;
+  remaining: string[];
+}[] = [
+  { name: 'no claim', claimOf: () => null, remaining: ['unrelated-key'] },
+  {
+    name: "the deleted account's claim",
+    claimOf: (uid) => JSON.stringify({ uid, at: 1 }),
+    remaining: ['unrelated-key'],
+  },
+  {
+    name: "another account's claim",
+    claimOf: () => JSON.stringify({ uid: OTHER_ACCOUNT, at: 1 }),
+    remaining: [
+      'diet-app-legacy-claim-v1',
+      'diet-app-saved-v1',
+      'diet-app-v1',
+      'unrelated-key',
+    ],
+  },
+];
+
+for (const c of CLAIM_CASES)
+  test(`deleting the account with ${c.name}: the old record and the claim are handled as planned`, async ({
+    browser,
+  }) => {
+    await withTempUser(async ({ id, cookies }) => {
+      const context = await browser.newContext({
+        storageState: { cookies, origins: [] },
+      });
+      const page = await context.newPage();
+      try {
+        await page.goto(`${BASE}/settings`);
+        await page.evaluate(
+          ([claim]) => {
+            localStorage.setItem('diet-app-v1', '{"state":{},"version":2}');
+            localStorage.setItem('diet-app-saved-v1', '{"items":[]}');
+            localStorage.setItem('unrelated-key', 'x');
+            if (claim) localStorage.setItem('diet-app-legacy-claim-v1', claim);
+          },
+          [c.claimOf(id)],
+        );
+        await page.getByRole('button', { name: '계정 삭제' }).click();
+        await page
+          .getByRole('region', { name: '계정을 삭제할까요?' })
+          .getByRole('button', { name: '계정 삭제' })
+          .click();
+        await expect(page).toHaveURL(`${BASE}/`);
+        await expect(page.getByLabel('이메일')).toBeVisible();
+        const keys = await page.evaluate(() => Object.keys(localStorage));
+        expect(keys.sort()).toEqual(c.remaining);
+      } finally {
+        await context.close();
+      }
+    });
+  });

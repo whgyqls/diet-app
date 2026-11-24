@@ -17,19 +17,42 @@ describe('isSameOrigin', () => {
   });
 });
 
-describe('localKeysToRemove', () => {
-  it("removes this user's cache and the old pre-login keys, nothing else", () => {
-    const keys = [
-      'diet-app-v1:u:me',
-      'diet-app-v1:u:other',
-      'diet-app-v1',
-      'diet-app-saved-v1',
-      'unrelated',
-    ];
-    expect(localKeysToRemove('me', keys)).toEqual([
+describe('localKeysToRemove (PLAN.md 9.2)', () => {
+  const keys = [
+    'diet-app-v1:u:me',
+    'diet-app-v1:u:other',
+    'diet-app-v1',
+    'diet-app-saved-v1',
+    'diet-app-legacy-claim-v1',
+    'unrelated',
+  ];
+
+  it('no claim: my cache and the old record go; the other cache and unrelated keys stay', () => {
+    expect(localKeysToRemove('me', keys, null)).toEqual([
       'diet-app-v1:u:me',
       'diet-app-v1',
       'diet-app-saved-v1',
     ]);
+  });
+
+  it('my claim: also the claim itself', () => {
+    expect(localKeysToRemove('me', keys, { uid: 'me', at: 1 })).toEqual([
+      'diet-app-v1:u:me',
+      'diet-app-v1',
+      'diet-app-saved-v1',
+      'diet-app-legacy-claim-v1',
+    ]);
+  });
+
+  it("another account's claim: only my cache goes; the record and the claim are theirs", () => {
+    expect(localKeysToRemove('me', keys, { uid: 'other', at: 1 })).toEqual([
+      'diet-app-v1:u:me',
+    ]);
+  });
+
+  it('a claim key without a matching claim object is not removed on its own (no claim case keeps it)', () => {
+    expect(localKeysToRemove('me', ['diet-app-legacy-claim-v1'], null)).toEqual(
+      [],
+    );
   });
 });

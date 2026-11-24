@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { localKeysToRemove } from '@/lib/account/deleteRequest';
+import { LEGACY_CLAIM_KEY, parseClaim } from '@/lib/legacy/legacyClaim';
 import { createClient } from '@/lib/supabase/client';
 import {
   safeLocalStorage,
@@ -32,9 +33,11 @@ export function DeleteAccountButton() {
     await supabase.auth.signOut({ scope: 'local' }).catch(() => undefined);
     try {
       const storage = safeLocalStorage();
-      if (uid)
-        for (const key of localKeysToRemove(uid, safeLocalStorageKeys()))
+      if (uid) {
+        const claim = parseClaim(storage.getItem(LEGACY_CLAIM_KEY));
+        for (const key of localKeysToRemove(uid, safeLocalStorageKeys(), claim))
           storage.removeItem(key);
+      }
     } catch {
       // storage unavailable: nothing stored to remove
     }
