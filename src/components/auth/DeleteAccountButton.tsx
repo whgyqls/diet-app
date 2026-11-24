@@ -65,8 +65,8 @@ export function DeleteAccountButton() {
         계정을 삭제할까요?
       </h2>
       <p className="mt-2 text-sm">
-        프로필, 재료 선택, 내 재료 세트, 저장한 조합(★), 식단 기록이 모두
-        삭제되고 되돌릴 수 없어요. 이 브라우저에 남은 기록도 함께 지워져요.
+        프로필, 재료 선택, 내 재료 세트, 저장한 조합(★)이 모두 삭제되고 되돌릴
+        수 없어요. 이 브라우저에 남은 기록도 함께 지워져요.
       </p>
       {failed && (
         <p role="alert" className="mt-2 text-sm text-red-700 dark:text-red-300">

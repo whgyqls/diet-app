@@ -1,8 +1,8 @@
-// Where the magic link lands. Two shapes (see src/lib/auth/callbackParams.ts):
+// Where the magic link and the Google sign-in land. Shapes (see src/lib/auth/callbackParams.ts):
 //  - ?token_hash=...&type=email  (Magic Link email template points here)
 //  - ?code=...                   (default template, PKCE code exchange)
 // On success: session cookies are set and the user goes to `next` (an internal path, default /select).
-// On any failure: back to the home page with ?auth_error=1.
+// On failure: back to the home page with ?auth_error=1 (?auth_error=oauth when Google sent the person back with an error).
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { CALLBACK_OTP_TYPE, resolveCallback } from '@/lib/auth/callbackParams';
@@ -14,6 +14,8 @@ export async function GET(request: NextRequest) {
     NextResponse.redirect(new URL('/?auth_error=1', origin));
 
   const action = resolveCallback(searchParams);
+  if (action.kind === 'provider_error')
+    return NextResponse.redirect(new URL('/?auth_error=oauth', origin));
   if (action.kind === 'invalid') return failure();
 
   // Built first so the session cookies can be written straight onto it.

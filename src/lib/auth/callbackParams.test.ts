@@ -56,3 +56,29 @@ describe('resolveCallback', () => {
     ).toMatchObject({ next: '/select' });
   });
 });
+
+describe('resolveCallback: Google sign-in', () => {
+  it('a code from Google is exchanged like a magic link code', () => {
+    expect(resolveCallback(q('code=xyz&next=/plan'))).toEqual({
+      kind: 'exchange_code',
+      code: 'xyz',
+      next: '/plan',
+    });
+  });
+
+  it('an error from the provider (the person said no, or it failed) is its own case', () => {
+    expect(
+      resolveCallback(
+        q('error=access_denied&error_code=bad&error_description=denied'),
+      ),
+    ).toEqual({ kind: 'provider_error' });
+  });
+
+  it('an error next to a code does not stop the exchange (the code decides)', () => {
+    expect(resolveCallback(q('code=xyz&error=x')).kind).toBe('exchange_code');
+  });
+
+  it('nothing usable is still invalid', () => {
+    expect(resolveCallback(q(''))).toEqual({ kind: 'invalid' });
+  });
+});

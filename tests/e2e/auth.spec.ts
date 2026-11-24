@@ -101,6 +101,37 @@ test.describe('signed out', () => {
     expect(requests).toBe(0);
   });
 
+  test('the Google button asks Supabase to sign in with Google and come back to /auth/callback (Google itself is stubbed)', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    const authorize = page.waitForRequest((r) =>
+      r.url().includes('/auth/v1/authorize'),
+    );
+    await page.route('**/auth/v1/authorize**', (route) =>
+      // what Supabase does when the person says no at Google: back to redirect_to with ?error=...
+      route.fulfill({
+        status: 302,
+        headers: {
+          location:
+            'http://localhost:3006/auth/callback?error=access_denied&error_description=denied',
+        },
+      }),
+    );
+    await page.getByRole('button', { name: 'Google로 계속하기' }).click();
+    const url = new URL((await authorize).url());
+    expect(url.searchParams.get('provider')).toBe('google');
+    expect(url.searchParams.get('redirect_to')).toBe(
+      'http://localhost:3006/auth/callback',
+    );
+    expect(url.searchParams.get('prompt')).toBe('select_account');
+    expect(url.searchParams.get('code_challenge')).toBeTruthy(); // PKCE
+    await expect(page).toHaveURL(/\/\?auth_error=oauth$/);
+    await expect(alert(page, 'Google 로그인을 마치지 못했어요')).toBeVisible();
+    // the email form is still there
+    await expect(page.getByLabel('이메일')).toBeVisible();
+  });
+
   test('a failed link comes back to the home page with a message', async ({
     page,
   }) => {

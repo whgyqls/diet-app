@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   LOGIN_MESSAGES,
+  authErrorMessage,
   loginErrorMessage,
   looksLikeEmail,
 } from './loginMessages';
@@ -56,5 +57,14 @@ describe('looksLikeEmail', () => {
       'a@b .co',
     ])
       expect(looksLikeEmail(bad), bad).toBe(false);
+  });
+});
+
+describe('authErrorMessage (?auth_error on the home page)', () => {
+  it('no parameter: no message; oauth: the Google message; anything else: the link message', () => {
+    expect(authErrorMessage(null)).toBeNull();
+    expect(authErrorMessage('oauth')).toBe(LOGIN_MESSAGES.oauthFailed);
+    expect(authErrorMessage('1')).toBe(LOGIN_MESSAGES.linkFailed);
+    expect(authErrorMessage('')).toBe(LOGIN_MESSAGES.linkFailed);
   });
 });

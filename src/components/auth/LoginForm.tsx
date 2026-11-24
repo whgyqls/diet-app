@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import {
   LOGIN_MESSAGES,
   RESEND_COOLDOWN_SECONDS,
+  authErrorMessage,
   looksLikeEmail,
   loginErrorMessage,
 } from '@/lib/auth/loginMessages';
@@ -18,8 +19,9 @@ export function LoginForm() {
   const [email, setEmail] = useState('');
   const [phase, setPhase] = useState<Phase>('idle');
   const [error, setError] = useState<string | null>(
-    params.get('auth_error') !== null ? LOGIN_MESSAGES.linkFailed : null,
+    authErrorMessage(params.get('auth_error')),
   );
+  const [googleBusy, setGoogleBusy] = useState(false);
   const [cooldown, setCooldown] = useState(0);
 
   useEffect(() => {
@@ -56,9 +58,48 @@ export function LoginForm() {
     }
   }
 
+  async function google() {
+    if (googleBusy) return;
+    setGoogleBusy(true);
+    setError(null);
+    try {
+      const { error: authError } = await createClient().auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          // Same callback as the magic link; must be in the Redirect URLs list of the Supabase dashboard.
+          redirectTo: `${window.location.origin}/auth/callback`,
+          // always let the person pick the account (a shared browser may be signed in to another one)
+          queryParams: { prompt: 'select_account' },
+        },
+      });
+      // On success the browser is already on its way to Google.
+      if (authError) {
+        setGoogleBusy(false);
+        setError(LOGIN_MESSAGES.oauthStartFailed);
+      }
+    } catch {
+      setGoogleBusy(false);
+      setError(LOGIN_MESSAGES.oauthStartFailed);
+    }
+  }
+
   const waiting = cooldown > 0;
   return (
     <form onSubmit={submit} className="mt-6 flex flex-col gap-3" noValidate>
+      <button
+        type="button"
+        onClick={() => void google()}
+        disabled={googleBusy}
+        className="flex min-h-12 items-center justify-center rounded-lg border border-neutral-300 font-semibold disabled:opacity-60 dark:border-neutral-600"
+      >
+        {googleBusy ? 'Google로 이동 중…' : 'Google로 계속하기'}
+      </button>
+      <p
+        aria-hidden="true"
+        className="text-center text-xs text-neutral-600 dark:text-neutral-400"
+      >
+        또는 이메일로
+      </p>
       <label htmlFor="login-email" className="text-sm font-medium">
         이메일
       </label>

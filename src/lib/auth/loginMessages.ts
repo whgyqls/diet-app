@@ -11,7 +11,18 @@ export const LOGIN_MESSAGES = {
   linkFailed:
     '로그인 링크가 만료됐거나 이미 사용됐어요. 새 링크를 받아 주세요.',
   generic: '메일을 보내지 못했어요. 잠시 뒤에 다시 시도해 주세요.',
+  oauthFailed: 'Google 로그인을 마치지 못했어요. 다시 시도해 주세요.',
+  oauthStartFailed:
+    'Google 로그인을 시작하지 못했어요. 잠시 뒤에 다시 시도해 주세요.',
 } as const;
+
+/** The message for `?auth_error=...` on the home page: `oauth` = the Google sign-in came back with an error. */
+export function authErrorMessage(value: string | null): string | null {
+  if (value === null) return null;
+  return value === 'oauth'
+    ? LOGIN_MESSAGES.oauthFailed
+    : LOGIN_MESSAGES.linkFailed;
+}
 
 export type LoginErrorLike =
   { code?: string | null; status?: number | null } | null | undefined;
