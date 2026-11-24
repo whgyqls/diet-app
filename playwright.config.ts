@@ -35,6 +35,7 @@ export default defineConfig({
     env: {
       NEXT_PUBLIC_SUPABASE_URL: project.url,
       NEXT_PUBLIC_SUPABASE_ANON_KEY: project.anonKey,
+      SUPABASE_SERVICE_ROLE_KEY: project.serviceKey,
     },
   },
 });
