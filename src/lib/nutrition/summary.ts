@@ -25,7 +25,7 @@ export function daySummary(t: DayTargets): DaySummary {
 }
 
 export type DayBar = {
-  key: 'kcal' | 'protein' | 'carbs' | 'fat' | 'fiber' | 'sodium';
+  key: 'kcal' | 'protein' | 'carbs' | 'fat' | 'satFat' | 'fiber' | 'sodium';
   actual: number; // rounded for display
   target: number; // rounded for display
   unit: 'kcal' | 'g' | 'mg';
@@ -60,6 +60,8 @@ export function dayBars(plan: Pick<DayPlan, 'targets' | 'totals'>): DayBar[] {
     bar('protein', a.protein, t.protein.base, 'g', 'reach'),
     bar('carbs', a.carbs, t.totalCarbMax, 'g', 'limit'),
     bar('fat', a.fat, t.fat.stage2, 'g', 'limit'),
+    // limit = the 7% target of PLAN.md 4.1-2 (over it: weak penalty; 10%: warning)
+    bar('satFat', a.satFat, t.satFatTarget, 'g', 'limit'),
     bar('fiber', a.fiber, t.fiberMin, 'g', 'reach'),
     bar('sodium', a.sodium, t.sodiumMax, 'mg', 'limit'),
   ];

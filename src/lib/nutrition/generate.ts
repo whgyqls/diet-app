@@ -22,10 +22,13 @@ import {
   COMBOS_PER_MEAL,
   DAY_PLAN_OPTIONS_PER_GROUP,
   DAY_PLAN_OPTIONS_PER_INCLUDE,
+  DAY_PLAN_OPTIONS_PER_KCAL,
   DAY_PLAN_OPTIONS_PER_MEAL,
+  FAT_KCAL_RATIO_MIN,
   FAVORITE_BONUS,
   FIBER_SETS_PER_MEAL,
   FIBER_SET_REPEAT_PENALTY,
+  KCAL_FILL_MIN_RATIO,
   KCAL_PER_GRAM,
   MEAL_KCAL_WARN_RATIO,
   LOW_CARB_NO_CARB_BONUS,
@@ -47,6 +50,7 @@ import {
   seasoningNutrients,
 } from './portions';
 import { microsOf, summarizeDay } from './day';
+import { kcalGapReasons } from './kcalGap';
 import { carbCapGrams, scoreCombo } from './scoring';
 import { seasoningPlanner } from './seasoning';
 import { resolveStyles } from './styles';
@@ -69,12 +73,19 @@ export function isOil(food: Pick<Food, 'category' | 'group'>): boolean {
   return food.category === 'fat' && food.group === OIL_GROUP;
 }
 
-/** Selected oils, favorites first. */
+/** Saturated fat as a share of the food's own fat: the lower, the better for the same fat. */
+const satShareOfFat = (f: Food) =>
+  f.per100g.fat > 0 ? f.per100g.satFat / f.per100g.fat : 0;
+
+/** Selected oils: favorites first, then the one with the least saturated fat per gram of fat. */
 function orderedOils(foods: Food[], prefs: Selection['foods']): Food[] {
   const fav = (f: Food) => (prefs[f.id] === 'favorite' ? 0 : 1);
   return foods
     .filter((f) => isOil(f) && prefs[f.id])
-    .sort((a, b) => fav(a) - fav(b) || byId(a, b));
+    .sort(
+      (a, b) =>
+        fav(a) - fav(b) || satShareOfFat(a) - satShareOfFat(b) || byId(a, b),
+    );
 }
 
 /** Per-user oil and seasoning setup shared by every combo of a meal. */
@@ -402,6 +413,7 @@ export type DayRequest = {
 type DayPick = {
   idx: number[];
   missing: number; // includeFoods not in the day
+  kcalShort: number; // how far the day is below KCAL_FILL_MIN_RATIO of the kcal target (0 = reached)
   violated: number; // how many day limits are broken
   groups: number;
   repeats: number;
@@ -409,14 +421,15 @@ type DayPick = {
 };
 
 /**
- * Lexicographic: fewer missing includeFoods, fewer broken day limits, more protein groups, fewer repeated
- * foods, lower total. Limits count as broken/not (not by how much), so a limit no option can meet (e.g.
+ * Lexicographic: fewer missing includeFoods, reaching KCAL_FILL_MIN_RATIO of the kcal target, fewer broken
+ * day limits, more protein groups, fewer repeated foods, lower total. Limits count as broken/not (not by how much), so a limit no option can meet (e.g.
  * 100 g carbs with no carb food selected) does not override variety; how far it is missed still weighs in
  * `total`.
  */
 function betterDay(a: DayPick, b: DayPick | undefined): boolean {
   if (!b) return true;
   if (a.missing !== b.missing) return a.missing < b.missing;
+  if (a.kcalShort > 0 !== b.kcalShort > 0) return a.kcalShort === 0;
   if (a.violated !== b.violated) return a.violated < b.violated;
   if (a.groups !== b.groups) return a.groups > b.groups;
   if (a.repeats !== b.repeats) return a.repeats < b.repeats;
@@ -424,9 +437,9 @@ function betterDay(a: DayPick, b: DayPick | undefined): boolean {
 }
 
 /**
- * Day-level limits as relative excess (0 when met): total carbs within [100 g (0 in the low-carb style),
- * the carb cap of the kcal eaten + CARB_TOLERANCE_G], saturated fat < 10%, fat within the diet's cap,
- * cholesterol <= 300 mg, and each micronutrient (except vitamin D) at least 90% of its KDRI value.
+ * Day-level limits as relative excess (0 when met): total carbs within [100 g (0 in the low-carb style), the carb cap of the kcal eaten + CARB_TOLERANCE_G],
+ * saturated fat < 10%, fat within [FAT_KCAL_RATIO_MIN, the diet's cap], cholesterol <= 300 mg, and each
+ * micronutrient (except vitamin D) at least 90% of its KDRI value.
  * Carb, fat and saturated-fat shares all use the kcal actually eaten.
  */
 function dayLimitExcess(
@@ -446,6 +459,8 @@ function dayLimitExcess(
     Math.max(0, fatKcal(day.satFat) / day.kcal - SAT_FAT_KCAL_RATIO_MAX) /
       SAT_FAT_KCAL_RATIO_MAX,
     Math.max(0, fatKcal(day.fat) / day.kcal - fatCapShare) / fatCapShare,
+    Math.max(0, FAT_KCAL_RATIO_MIN - fatKcal(day.fat) / day.kcal) /
+      FAT_KCAL_RATIO_MIN,
     Math.max(0, day.cholesterol - t.cholesterolMax) / t.cholesterolMax,
     ...MICRO_KEYS.filter((k) => !MICROS_HARD_FROM_FOOD.includes(k)).map(
       (k) =>
@@ -458,6 +473,7 @@ function dayLimitExcess(
 /**
  * Index per meal. In order of priority:
  * (0) as few missing includeFoods as possible,
+ * (0b) the day reaches KCAL_FILL_MIN_RATIO of the kcal target (when some option can),
  * (1) as few broken day limits (dayLimitExcess) as possible,
  * (2) as many different protein groups as possible,
  * (3) as few foods repeated across meals as possible (protein, carb, vegetables, fat source),
@@ -484,14 +500,18 @@ function chooseDay(
         >,
       );
       const excess = dayLimitExcess(day, t, micros);
+      const kcalShort =
+        Math.max(0, t.kcal * KCAL_FILL_MIN_RATIO - day.kcal) / t.kcal;
       const pick: DayPick = {
         idx: [...idx],
         missing: includeFoods.filter((id) => !foods.includes(id)).length,
+        kcalShort,
         violated: excess.filter((e) => e > 0).length,
         groups: new Set(chosen.map(comboProteinGroup)).size,
         repeats: foods.length - new Set(foods).size,
         total:
           chosen.reduce((a, c) => a + c.score.total, 0) +
+          kcalShort +
           excess.reduce((a, e) => a + e, 0),
       };
       if (betterDay(pick, best)) best = pick;
@@ -520,7 +540,15 @@ function dayOptions(
     const lowCarb = inGroup.filter(
       (c) => c.totals.carbs <= carbCapGrams(t, c.totals.kcal),
     );
-    for (const list of [inGroup, lowCarb]) {
+    // Also its best combos that fill the meal's kcal (the day must reach KCAL_FILL_MIN_RATIO of the target
+    // without giving up this protein group), with and without staying inside the carb cap.
+    const filled = inGroup.filter(
+      (c) => c.totals.kcal >= t.kcal * KCAL_FILL_MIN_RATIO,
+    );
+    const filledLowCarb = filled.filter(
+      (c) => c.totals.carbs <= carbCapGrams(t, c.totals.kcal),
+    );
+    for (const list of [inGroup, lowCarb, filled, filledLowCarb]) {
       options.push(
         ...list
           .filter((c) => !options.includes(c))
@@ -528,6 +556,20 @@ function dayOptions(
       );
     }
   }
+  // The combos that fill the most kcal inside the caps (overall and per protein group), so a day that
+  // reaches KCAL_FILL_MIN_RATIO can be built even when no meal alone gets there.
+  const byKcal = (list: MealCombo[]) =>
+    list
+      .filter((c) => withinLimits(c, t) && !options.includes(c))
+      .sort((a, b) => b.totals.kcal - a.totals.kcal)
+      .slice(0, DAY_PLAN_OPTIONS_PER_KCAL);
+  options.push(...byKcal(candidates));
+  for (const g of Object.keys(PROTEIN_GROUPS) as ProteinGroup[])
+    options.push(
+      ...byKcal(candidates.filter((c) => comboProteinGroup(c) === g)).filter(
+        (c) => !options.includes(c),
+      ),
+    );
   // The best combos that contain each includeFood, so the day can fit it somewhere.
   for (const id of includeFoods) {
     options.push(
@@ -539,6 +581,28 @@ function dayOptions(
     );
   }
   return { top, options };
+}
+
+/** Inside the meal's total-carb cap (+ tolerance) and the saturated-fat cap. */
+function withinLimits(c: MealCombo, t: MealTargets): boolean {
+  return (
+    c.totals.carbs <= carbCapGrams(t, c.totals.kcal) + CARB_TOLERANCE_G &&
+    (c.totals.satFat * KCAL_PER_GRAM.fat) / c.totals.kcal <=
+      SAT_FAT_KCAL_RATIO_MAX
+  );
+}
+
+/**
+ * The most kcal a combo of this meal reaches without breaking the meal's total-carb cap (+ tolerance) or the
+ * saturated-fat cap: the day's "ceiling" is the sum over the meals. A combo that fills the kcal only by going
+ * past the style's own cap is not counted as reachable. With no combo inside the caps, all of them count.
+ */
+function maxKcalWithinLimits(candidates: MealCombo[], t: MealTargets): number {
+  const inside = candidates.filter((c) => withinLimits(c, t));
+  return (inside.length > 0 ? inside : candidates).reduce(
+    (a, c) => Math.max(a, c.totals.kcal),
+    0,
+  );
 }
 
 /** Targets, setting flags, per-meal targets and effective includeFoods of a day request. */
@@ -581,7 +645,10 @@ export function generateDayPlan(req: DayRequest): DayPlan {
       options: cond.meals?.[t.mealType],
     });
     reason ??= r.reason ?? (r.candidates.length === 0 ? 'NO_MATCH' : undefined);
-    return dayOptions(r.candidates, t, includeFoods);
+    return {
+      ...dayOptions(r.candidates, t, includeFoods),
+      maxKcal: maxKcalWithinLimits(r.candidates, t),
+    };
   });
 
   const meals: MealPlan[] = mealTargets.map((t) => ({
@@ -603,6 +670,14 @@ export function generateDayPlan(req: DayRequest): DayPlan {
       );
     });
   }
+  const excludedIds = new Set(cond.excludeFoods ?? []);
+  const excludedGroups = new Set(targets.rules.excludedGroups);
+  const usable = req.foods.filter(
+    (f) =>
+      req.selection.foods[f.id] &&
+      !excludedIds.has(f.id) &&
+      !excludedGroups.has(f.group),
+  );
   return summarizeDay({
     targets,
     profile: req.profile,
@@ -614,5 +689,13 @@ export function generateDayPlan(req: DayRequest): DayPlan {
     })),
     includeFoods,
     reason,
+    fillContext: {
+      ceilingKcal: generated.reduce((a, g) => a + g.maxKcal, 0),
+      reasons: kcalGapReasons(
+        usable,
+        targets,
+        mealTargets.every((t) => cond.meals?.[t.mealType]?.carb === 'none'),
+      ),
+    },
   });
 }

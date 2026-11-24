@@ -97,6 +97,12 @@ export const CARB_TOPUP_FOOD_IDS: readonly string[] = [
 export const FAT_KCAL_RATIO_STAGE1 = 0.3;
 export const FAT_KCAL_RATIO_STAGE2 = 0.35;
 /**
+ * Lower bound of total fat as a share of the kcal eaten (day level). Same source as the other reference
+ * intakes of the app (KDRI 2020 energy ratio for fat, 15-30%, adults 19+); the upper caps stay as documented
+ * in PLAN.md 4.1-2. Below it the day is penalized in the choice of combos; it is not a warning flag.
+ */
+export const FAT_KCAL_RATIO_MIN = 0.15;
+/**
  * Not used by the default diet. Reserved for a future "low-carb" style: unsaturated fat sources only,
  * up to 45% of kcal (fill step fatToStage3 in KCAL_FILL_ORDER_LOW_CARB).
  */
@@ -305,8 +311,13 @@ export const KCAL_FILL_ORDER_LOW_CARB: readonly KcalFillStep[] = [
   'reportGap',
 ];
 
+/**
+ * The plan should reach at least this share of the kcal target (day and meal). Below it the app says so and
+ * names the reasons (kcalGap.ts). One number for the kcal warning, the "못 채운 목표" list and the day choice.
+ */
+export const KCAL_FILL_MIN_RATIO = 0.9;
 /** Meal kcal below this share of the target gets a warning. */
-export const MEAL_KCAL_WARN_RATIO = 0.8;
+export const MEAL_KCAL_WARN_RATIO = KCAL_FILL_MIN_RATIO;
 
 /** Each vegetable starts here and only grows when fiber is short. */
 export const VEGGIE_DEFAULT_G = 100;
@@ -337,8 +348,9 @@ export const SCORE_WEIGHTS = {
   carbUnder: 1.0, // total carbs below the 100 g/day share
   fiberUnder: 1.0,
   fiberOver: 0.2, // weak: fiber above the soft max
-  satFatOver: 3.0, // strong: saturated fat at/above 10% of kcal
-  satFatAboveTarget: 0.5, // weak: between 7% and 10%
+  satFatOver: 4.5, // strong: saturated fat at/above 10% of kcal
+  satFatAboveTarget: 1.5, // between 7% and 10% (was 0.5: saturated fat is kept low, PLAN.md 4.1-2)
+  satFatLow: 0.1, // small, always on: of two combos the one with less saturated fat wins
   cholesterolOver: 1.0, // above the 300 mg/day share
   microUnder: 0.05, // weak, per micronutrient below its KDRI share
   sodiumOver: 1.5,
@@ -469,6 +481,9 @@ export const LOW_CARB_NO_CARB_BONUS = 0.15;
 
 /** A protein/fiber/kcal target counts as unmet below this share of it (shown as a shortfall). */
 export const UNMET_TARGET_TOLERANCE = 0.95;
+
+/** Highest-kcal combos inside the carb and saturated-fat caps added to each meal's day-plan options (overall, and per protein group). */
+export const DAY_PLAN_OPTIONS_PER_KCAL = 3;
 
 /** Best combos per `includeFoods` item added to each meal's day-plan options. */
 export const DAY_PLAN_OPTIONS_PER_INCLUDE = 3;

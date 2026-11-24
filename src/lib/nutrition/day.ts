@@ -6,6 +6,7 @@ import type {
   DayTargets,
   FlagCode,
   GenerateFailReason,
+  KcalFillContext,
   MealCombo,
   MealPlan,
   MealTargets,
@@ -17,12 +18,14 @@ import type {
   UnmetTarget,
 } from '@/types/nutrition';
 import {
+  KCAL_FILL_MIN_RATIO,
   MICRO_KEYS,
   MICRO_SHORTFALL_RATIO,
   MICROS_HARD_FROM_FOOD,
   UNMET_TARGET_TOLERANCE,
 } from './constants';
 import { computeFlags } from './flags';
+import { kcalFillOf } from './kcalGap';
 import { ZERO_TOTALS, addTotals } from './portions';
 
 /** Micronutrients of the portioned foods. Missing source values count as 0 (an underestimate). */
@@ -51,6 +54,8 @@ export type SummarizeDayInput = {
   }[];
   includeFoods: string[];
   reason?: GenerateFailReason;
+  /** From generateDayPlan; lets the plan screen keep the kcal explanation after a swap. */
+  fillContext?: KcalFillContext;
 };
 
 export function summarizeDay(input: SummarizeDayInput): DayPlan {
@@ -92,8 +97,9 @@ export function summarizeDay(input: SummarizeDayInput): DayPlan {
     nutrient: UnmetTarget['nutrient'],
     target: number,
     actual: number,
+    tolerance = UNMET_TARGET_TOLERANCE,
   ): UnmetTarget[] =>
-    planned && actual < target * UNMET_TARGET_TOLERANCE
+    planned && actual < target * tolerance
       ? [{ nutrient, target, actual, short: target - actual }]
       : [];
   const dayFoods = chosen.flatMap((c) =>
@@ -110,8 +116,19 @@ export function summarizeDay(input: SummarizeDayInput): DayPlan {
     unmetTargets: [
       ...unmet('protein', targets.protein.base, totals.protein),
       ...unmet('fiber', targets.fiberMin, totals.fiber),
-      ...unmet('kcal', targets.kcal, totals.kcal),
+      ...unmet('kcal', targets.kcal, totals.kcal, KCAL_FILL_MIN_RATIO),
     ],
+    ...(planned && input.fillContext
+      ? (() => {
+          const kcalFill = kcalFillOf(
+            totals.kcal,
+            targets.kcal,
+            input.fillContext,
+          );
+          return kcalFill ? { kcalFill } : {};
+        })()
+      : {}),
+    ...(input.fillContext ? { fillContext: input.fillContext } : {}),
     missingIncludes: input.includeFoods.filter((id) => !dayFoods.includes(id)),
     ...(input.reason ? { reason: input.reason } : {}),
   };

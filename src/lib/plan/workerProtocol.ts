@@ -91,6 +91,7 @@ function runDay(req: DayRequestMsg): WorkerResponse {
       settingFlags: setup.settingFlags,
       includeFoods: setup.includeFoods,
       reason: plan.reason,
+      fillContext: plan.fillContext,
     },
   };
 }

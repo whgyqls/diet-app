@@ -20,14 +20,24 @@ const score = (over: Partial<NutrientTotals>, favorites = 0) =>
 /** g of fat (or saturated fat) that is `share` of the meal's target kcal */
 const fatAt = (share: number) => (LUNCH.kcal * share) / 9;
 const kcalAt = (ratio: number) => score({ kcal: LUNCH.kcal * ratio }).kcal;
+/** Total without the small always-on saturated-fat term (satFatLow, PLAN.md 4.1-2). */
+const core = (r: { total: number; satFatLow: number }) => r.total - r.satFatLow;
 
 describe('scoreCombo', () => {
+  it('prefers less saturated fat even below the 7% target (small always-on term)', () => {
+    const low = score({ satFat: LUNCH.satFatTarget * 0.2 });
+    const atTarget = score({ satFat: LUNCH.satFatTarget });
+    expect(low.satFatAboveTarget).toBe(0);
+    expect(low.satFatLow).toBeGreaterThan(0);
+    expect(low.total).toBeLessThan(atTarget.total);
+  });
+
   it('is 0 when every target is met exactly', () => {
-    expect(score({}).total).toBe(0);
+    expect(core(score({}))).toBeCloseTo(0, 12);
   });
 
   it('does not penalize protein anywhere between base and max', () => {
-    expect(score({ protein: LUNCH.protein.max }).total).toBe(0);
+    expect(core(score({ protein: LUNCH.protein.max }))).toBeCloseTo(0, 12);
     expect(score({ protein: LUNCH.protein.base - 5 }).protein).toBeGreaterThan(
       0,
     );
@@ -152,9 +162,14 @@ describe('scoreCombo', () => {
   });
 
   it('gives a bonus per favorite, so a favorite can outrank a slightly closer combo', () => {
-    expect(score({}, 2).total).toBeCloseTo(-2 * FAVORITE_BONUS, 9);
-    const closeNoFav = score({ kcal: LUNCH.kcal * 0.88 });
-    const fartherFav = score({ kcal: LUNCH.kcal * 0.86 }, 1);
+    expect(core(score({}, 2))).toBeCloseTo(-2 * FAVORITE_BONUS, 9);
+    // saturated fat scales with the kcal eaten, so only the kcal gap and the favorite differ
+    const at = (r: number) => ({
+      kcal: LUNCH.kcal * r,
+      satFat: LUNCH.satFatTarget * r,
+    });
+    const closeNoFav = score(at(0.88));
+    const fartherFav = score(at(0.86), 1);
     expect(fartherFav.total).toBeLessThan(closeNoFav.total);
   });
 });

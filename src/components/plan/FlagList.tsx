@@ -1,7 +1,7 @@
 'use client';
 
 import { HARD_FROM_FOOD_NOTE, MICRO_LABELS_KO } from '@/lib/nutrition/flags';
-import { UNMET_LABELS } from '@/lib/ui-labels';
+import { KCAL_GAP_REASON_TEXT, UNMET_LABELS } from '@/lib/ui-labels';
 import type { DayPlan } from '@/types/nutrition';
 
 const unitOf = (n: 'protein' | 'fiber' | 'kcal') =>
@@ -9,8 +9,11 @@ const unitOf = (n: 'protein' | 'fiber' | 'kcal') =>
 
 /** Warnings (text + source, collapsible), missing nutrients and targets the foods could not reach. */
 export function FlagList({ plan }: { plan: DayPlan }) {
-  const { flagDetails, shortfalls, unmetTargets } = plan;
-  if (flagDetails.length + shortfalls.length + unmetTargets.length === 0)
+  const { flagDetails, shortfalls, unmetTargets, kcalFill } = plan;
+  if (
+    flagDetails.length + shortfalls.length + unmetTargets.length === 0 &&
+    !kcalFill
+  )
     return null;
   return (
     <section aria-label="안내와 경고" className="space-y-3 px-4 pt-4">
@@ -28,6 +31,35 @@ export function FlagList({ plan }: { plan: DayPlan }) {
             </li>
           ))}
         </ul>
+      )}
+      {kcalFill && (
+        <div
+          role="note"
+          className="rounded-lg border border-neutral-300 p-3 text-sm dark:border-neutral-600"
+        >
+          <p className="font-medium">칼로리를 목표만큼 채우지 못했어요</p>
+          {kcalFill.cause === 'SELECTION' ? (
+            <>
+              <p className="mt-1">
+                고른 재료와 설정으로는 목표의 약{' '}
+                {Math.floor(kcalFill.ceilingRatio * 100)}%까지만 채울 수 있어요.
+                (지금 식단: 약 {Math.round(kcalFill.ratio * 100)}%)
+              </p>
+              <ul className="mt-1 list-disc pl-5">
+                {kcalFill.reasons.map((r) => (
+                  <li key={r}>{KCAL_GAP_REASON_TEXT[r]}</li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <p className="mt-1">
+              다른 영양 기준(탄수화물·지방·포화지방·나트륨 등)을 함께 맞추느라
+              목표의 약 {Math.round(kcalFill.ratio * 100)}%만 채웠어요. 고른
+              재료로는 최대 약 {Math.floor(kcalFill.ceilingRatio * 100)}%까지
+              채울 수 있어요.
+            </p>
+          )}
+        </div>
       )}
       {unmetTargets.length > 0 && (
         <div className="rounded-lg border border-neutral-300 p-3 text-sm dark:border-neutral-600">

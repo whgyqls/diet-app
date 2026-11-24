@@ -44,8 +44,7 @@ export const FLAG_MESSAGES: Record<FlagCode, string> = {
     '포화지방이 하루 칼로리의 10% 이상이에요. 지방이 많은 고기나 유제품을 줄이면 낮출 수 있어요.',
   HIGH_CHOLESTEROL:
     '콜레스테롤이 하루 300mg을 넘어요. 달걀·오징어·새우 같은 재료를 줄이면 낮출 수 있어요.',
-  LOW_KCAL:
-    '고른 재료와 설정으로는 목표 칼로리의 80%를 채우지 못했어요. 재료를 더 고르거나 스타일을 바꿔 보세요.',
+  LOW_KCAL: '고른 재료와 설정으로는 목표 칼로리의 90%를 채우지 못했어요.',
   MICRO_SHORTFALL: '일부 영양소가 권장 기준의 90%보다 적어요.',
   KCAL_BELOW_FLOOR:
     '하루 칼로리가 안전 하한(여성 1,200kcal / 남성 1,500kcal)보다 낮아요.',
@@ -67,7 +66,7 @@ export const FLAG_SOURCES: Record<FlagCode, string> = {
   HIGH_FAT: 'IOM 2005 지방 에너지적정비율 상한 35%',
   HIGH_SAT_FAT: 'WHO 2023, 미국 식생활지침 2020–2025 (포화지방 10% 미만)',
   HIGH_CHOLESTEROL: 'KDRI 2020 콜레스테롤 300mg 미만',
-  LOW_KCAL: '앱 기준 (목표 칼로리의 80%)',
+  LOW_KCAL: '앱 기준 (목표 칼로리의 90%)',
   MICRO_SHORTFALL: 'KDRI 2020 권장섭취량·충분섭취량의 90%',
   KCAL_BELOW_FLOOR: '앱 안전 하한 (여성 1,200 / 남성 1,500kcal)',
   PROTEIN_BELOW_MIN: 'KDRI 2020 단백질 권장섭취량 약 0.91g/kg',

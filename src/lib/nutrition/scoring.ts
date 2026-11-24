@@ -68,6 +68,7 @@ export function scoreCombo(
   styleBonus = 0,
 ): ScoreBreakdown {
   const w = SCORE_WEIGHTS;
+  const kcalEaten = totals.kcal;
   const proteinErr =
     totals.protein < t.protein.base
       ? (t.protein.base - totals.protein) / t.protein.base
@@ -89,6 +90,17 @@ export function scoreCombo(
       w.satFatOver * shareOver(totals.satFat, t.satFatMax, t, totals.kcal),
     satFatAboveTarget:
       w.satFatAboveTarget * shareOver(satToCap, t.satFatTarget, t, totals.kcal),
+    // Always on and small: of two combos with the same other scores, the one with less saturated fat wins.
+    satFatLow:
+      kcalEaten > 0 && t.satFatTarget > 0
+        ? w.satFatLow *
+          Math.min(
+            1,
+            (totals.satFat * KCAL_PER_GRAM.fat) /
+              kcalEaten /
+              ((t.satFatTarget * KCAL_PER_GRAM.fat) / t.kcal),
+          )
+        : 0,
     cholesterolOver:
       w.cholesterolOver * over(totals.cholesterol, t.cholesterolMax),
     microUnder: micros

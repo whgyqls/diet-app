@@ -87,6 +87,7 @@ export const BAR_LABELS = {
   protein: '단백질',
   carbs: '총탄수화물',
   fat: '지방',
+  satFat: '포화지방',
   fiber: '식이섬유',
   sodium: '나트륨',
 } as const;
@@ -96,6 +97,20 @@ export const UNMET_LABELS = {
   protein: '단백질',
   fiber: '식이섬유',
   kcal: '칼로리',
+} as const;
+/** Why the foods cannot fill the kcal target (kcalGap.ts) and what to do about it. */
+export const KCAL_GAP_REASON_TEXT = {
+  NO_CARB_FOOD:
+    '탄수화물 재료를 고르지 않았어요. 현미밥·귀리·고구마 같은 재료를 고르면 더 채울 수 있어요.',
+  NO_FAT_SOURCE:
+    '견과·씨앗·아보카도를 고르지 않았어요. 고르면 지방으로 더 채울 수 있어요.',
+  NO_OIL:
+    '기름을 고르지 않았어요. 올리브유·들기름 같은 냉압착 기름을 고르면 조금 더 채울 수 있어요.',
+  LOW_CARB_STYLE:
+    '저탄수 스타일의 총탄수화물 상한을 넘지 않게 하다 보니 더 채울 수 없어요. 스타일을 바꾸면 더 채울 수 있어요.',
+  USER_CARB_LIMIT: '순탄수 목표를 직접 정해서 그 이상 늘리지 않아요.',
+  PORTION_LIMITS:
+    '한 끼에 단백질은 1가지, 채소는 1~2가지까지이고 재료마다 1회 최대 분량과 단백질 상한이 있어요.',
 } as const;
 export const SEASONING_REASON_TEXT = {
   NO_SALTY_SELECTED: '짠 양념을 고르지 않아 권장량이 없어요',

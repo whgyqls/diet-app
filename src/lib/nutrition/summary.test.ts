@@ -31,13 +31,14 @@ const plan = (
 });
 
 describe('dayBars', () => {
-  it('returns the six bars in screen order with units', () => {
+  it('returns the seven bars in screen order with units', () => {
     const bars = dayBars(plan({}));
     expect(bars.map((b) => [b.key, b.unit])).toEqual([
       ['kcal', 'kcal'],
       ['protein', 'g'],
       ['carbs', 'g'],
       ['fat', 'g'],
+      ['satFat', 'g'],
       ['fiber', 'g'],
       ['sodium', 'mg'],
     ]);
@@ -48,6 +49,7 @@ describe('dayBars', () => {
     expect(b.protein).toMatchObject({ target: 100, kind: 'reach' });
     expect(b.carbs).toMatchObject({ target: 150, kind: 'limit' });
     expect(b.fat).toMatchObject({ target: 50, kind: 'limit' });
+    expect(b.satFat).toMatchObject({ target: 4, kind: 'limit', over: true }); // 4.2 g = 7% of the meal-sized target; 10 g eaten
     expect(b.fiber).toMatchObject({ target: 25, kind: 'reach' });
     expect(b.sodium).toMatchObject({ target: 2000, kind: 'limit' });
   });

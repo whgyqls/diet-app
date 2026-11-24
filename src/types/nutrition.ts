@@ -219,6 +219,7 @@ export type ScoreBreakdown = {
   fatOver: number;
   satFatOver: number;
   satFatAboveTarget: number;
+  satFatLow: number;
   cholesterolOver: number;
   microUnder: number;
   favorite: number;
@@ -261,8 +262,31 @@ export type DayPlan = {
   flags: FlagCode[];
   flagDetails: Flag[]; // same warnings with message, source and basis
   unmetTargets: UnmetTarget[]; // protein/fiber/kcal the chosen foods could not reach
+  kcalFill?: KcalFill; // set when the day kcal is below KCAL_FILL_MIN_RATIO of the target
+  fillContext?: KcalFillContext; // what kcalFill is computed from (kept by the plan screen)
   missingIncludes: string[]; // includeFoods that are not in the plan
   reason?: GenerateFailReason;
+};
+
+/** Why the foods cannot fill the kcal target (kcalGap.ts). Plain codes; the screen turns them into text. */
+export type KcalGapReason =
+  | 'NO_CARB_FOOD' // no carb food selected
+  | 'NO_FAT_SOURCE' // no nut / seed / avocado selected
+  | 'NO_OIL' // no cold-pressed oil selected
+  | 'LOW_CARB_STYLE' // the low-carb style does not top up carbs
+  | 'USER_CARB_LIMIT' // the user set the net carbs themselves (not raised to fill kcal)
+  | 'PORTION_LIMITS'; // protein cap, one protein + 1-2 vegetables per meal, max grams per food
+
+/** Fixed by the selection and settings (not by which cards are picked): kept for recomputing after a swap. */
+export type KcalFillContext = { ceilingKcal: number; reasons: KcalGapReason[] };
+
+/** Present only when the day is below KCAL_FILL_MIN_RATIO of the kcal target. */
+export type KcalFill = {
+  ratio: number; // chosen day / target
+  ceilingRatio: number; // best combo of every meal / target (ignores the other limits)
+  /** SELECTION: even the best combos cannot reach it. CHOICE: they can, the other limits won. */
+  cause: 'SELECTION' | 'CHOICE';
+  reasons: KcalGapReason[]; // only for SELECTION
 };
 
 export type GenerateFailReason =

@@ -36,6 +36,7 @@ function inputFor(
     profile,
     settingFlags,
     includeFoods: [],
+    fillContext: p.fillContext,
     meals: p.meals.map((m, i) => ({
       mealType: m.mealType,
       targets: m.targets,

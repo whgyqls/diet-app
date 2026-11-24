@@ -177,12 +177,12 @@ describe('computeFlags (final values, one place)', () => {
     expect(codes(flagsFor({ cholesterol: 301 }))).toContain('HIGH_CHOLESTEROL');
   });
 
-  it('LOW_KCAL below 80% of the target', () => {
+  it('LOW_KCAL below 90% of the target', () => {
     const { targets } = dayOf();
-    expect(codes(flagsFor({ kcal: targets.kcal * 0.81 }))).not.toContain(
+    expect(codes(flagsFor({ kcal: targets.kcal * 0.91 }))).not.toContain(
       'LOW_KCAL',
     );
-    expect(codes(flagsFor({ kcal: targets.kcal * 0.79 }))).toContain(
+    expect(codes(flagsFor({ kcal: targets.kcal * 0.89 }))).toContain(
       'LOW_KCAL',
     );
   });

@@ -84,7 +84,7 @@ test('shows loading, then bars, meal tabs and 5 swipeable cards', async ({
   ).toBeVisible({
     timeout: 30_000,
   });
-  await expect(page.getByRole('progressbar')).toHaveCount(6);
+  await expect(page.getByRole('progressbar')).toHaveCount(7);
   await expect(page.getByRole('tab')).toHaveText(['아침', '점심', '저녁']);
   await expect(page.getByRole('article')).toHaveCount(5);
 });
