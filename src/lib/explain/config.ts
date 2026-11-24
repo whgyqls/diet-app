@@ -19,7 +19,7 @@ export const EXPLAIN_LIMITS = {
   /** Longer than the server's, so the server answers (with its fallback) before the browser gives up. */
   clientTimeoutMs: 10_000,
   maxBodyBytes: 8_192,
-  maxTokens: 300,
+  maxTokens: 600,
   minTextChars: 10,
   maxTextChars: 220,
   maxSentences: 3,

@@ -264,6 +264,8 @@ describe('callOpenRouter', () => {
     );
     const body = JSON.parse(init.body as string);
     expect(body.model).toBe('m/x');
+    // the limit comes from config.ts only (no number repeated here)
+    expect(body.max_tokens).toBe(EXPLAIN_LIMITS.maxTokens);
     expect(JSON.stringify(body)).not.toContain('"k"');
   });
   it('maps problems to reasons', async () => {
