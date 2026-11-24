@@ -1,5 +1,7 @@
 // Phase 4a plan screen. Written only: this server cannot run a browser, so it is not executed here.
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './fixtures';
+import { seedServer, waitForSavedCombos, type SeedData } from './helpers/seed';
 
 const PROFILE = {
   sex: 'female',
@@ -19,19 +21,10 @@ const FOODS = {
   almond: 'ok',
 };
 
-/** Same shape as the zustand persist payload (src/lib/store/appStore.ts, version 2). */
+/** Server data for the test user (the app reads its data from the server since Phase 5d). Same shape as before. */
 async function seed(page: Page, state: Record<string, unknown>) {
-  await page.addInitScript(
-    (payload) => {
-      // Only when the key is missing: addInitScript also runs on reload and must not undo what the page changed.
-      if (window.localStorage.getItem('diet-app-v1') === null)
-        window.localStorage.setItem('diet-app-v1', JSON.stringify(payload));
-    },
-    {
-      state: { styles: [], overrides: {}, step: 0, kits: [], ...state },
-      version: 2,
-    },
-  );
+  void page;
+  await seedServer(state as SeedData);
 }
 
 test('home start button leads to onboarding', async ({ page }) => {
@@ -301,6 +294,7 @@ test('a starred combo stays starred after a reload', async ({ page }) => {
   const star = page.getByRole('button', { name: '조합 1 저장' });
   await star.click();
   await expect(star).toHaveAttribute('aria-pressed', 'true');
+  await waitForSavedCombos(1); // the star is written to the server, not by the "저장 중…" mark
   await page.reload();
   await expect(
     page.getByRole('button', { name: '조합 1 저장' }),

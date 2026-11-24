@@ -1,6 +1,8 @@
 // A page must not scroll sideways at the phone width (the project viewport is 375x667, see playwright.config.ts).
 // Found on /plan: the page was wider than the screen because of the card carousel (see the layout fix notes).
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './fixtures';
+import { seedServer, type SeedData } from './helpers/seed';
 
 // Same values as PROFILE and FOODS in plan.spec.ts. Not imported: importing a spec file would register its
 // tests a second time.
@@ -22,19 +24,10 @@ const FOODS = {
   almond: 'ok',
 };
 
-/** Same shape as the zustand persist payload (src/lib/store/appStore.ts, version 2), as in plan.spec.ts. */
+/** Server data for the test user (the app reads its data from the server since Phase 5d). */
 async function seed(page: Page, state: Record<string, unknown>) {
-  await page.addInitScript(
-    (payload) => {
-      // Only when the key is missing: addInitScript also runs on reload and must not undo what the page changed.
-      if (window.localStorage.getItem('diet-app-v1') === null)
-        window.localStorage.setItem('diet-app-v1', JSON.stringify(payload));
-    },
-    {
-      state: { styles: [], overrides: {}, step: 0, kits: [], ...state },
-      version: 2,
-    },
-  );
+  void page;
+  await seedServer(state as SeedData);
 }
 
 /** How far the page is wider than the screen (0 = fits). */

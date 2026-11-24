@@ -1,4 +1,5 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
+import { waitForSaved } from './helpers/saved';
 
 test('food card cycles ok -> favorite -> none and survives reload', async ({
   page,
@@ -9,6 +10,7 @@ test('food card cycles ok -> favorite -> none and survives reload', async ({
   await expect(card).toHaveAttribute('aria-label', '닭가슴살, 먹을 수 있음');
   await card.click();
   await expect(card).toHaveAttribute('aria-label', '닭가슴살, 좋아함');
+  await waitForSaved(page);
   await page.reload();
   await expect(
     page.getByRole('button', { name: '닭가슴살, 좋아함' }),
@@ -33,6 +35,7 @@ test('info sheet opens and the minimum condition notice shows', async ({
 test('pescatarian dims meat cards', async ({ page }) => {
   await page.goto('/onboarding');
   await page.getByRole('button', { name: /페스코/ }).click();
+  await waitForSaved(page);
   await page.goto('/select');
   await expect(
     page.getByText('이 스타일에서는 추천에서 제외돼요').first(),
@@ -132,6 +135,7 @@ test('ingredient kits: save, reset, load (replace / merge), rename, delete, surv
   await page.getByRole('button', { name: '닭가슴살, 좋아함' }).click();
   await page.getByRole('button', { name: /^대구, 선택 안 함/ }).click();
 
+  await waitForSaved(page);
   await page.reload();
   await page.getByRole('button', { name: '내 재료 세트' }).click();
   await sheet.getByRole('button', { name: '평일 점심 불러오기' }).click();
@@ -176,6 +180,7 @@ test('re-entering /select starts at the protein step with earlier choices still 
   await expect(step(page, '양념')).toHaveAttribute('aria-current', 'step');
 
   // leave and come back (the saved step used to bring back 양념)
+  await waitForSaved(page);
   await page.goto('/');
   await page.goto('/select');
   await expect(step(page, '단백질')).toHaveAttribute('aria-current', 'step');

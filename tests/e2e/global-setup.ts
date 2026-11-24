@@ -7,10 +7,12 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { createClient } from '@supabase/supabase-js';
 import { loadTestProject } from '../helpers/testProjectGuard';
-import { STORAGE_STATE, signInCookies } from './helpers/session';
+import { LOGIN_LOG, STORAGE_STATE, signInCookies } from './helpers/session';
 
 export default async function globalSetup() {
   const project = loadTestProject(); // throws unless this is the marked test project
+  mkdirSync(path.dirname(LOGIN_LOG), { recursive: true });
+  writeFileSync(LOGIN_LOG, ''); // a new count for this run
   const admin = createClient(project.url, project.serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });

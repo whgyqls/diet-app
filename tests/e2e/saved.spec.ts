@@ -1,7 +1,8 @@
 // /saved list. Written only: this server cannot run a browser, so it is not executed here.
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './fixtures';
+import { seedServer, waitForSavedCombos } from './helpers/seed';
 
-const SAVED_KEY = 'diet-app-saved-v1';
 const totals = {
   kcal: 612,
   protein: 45,
@@ -25,7 +26,8 @@ const combo = (
   requestFingerprint: 'fp',
   signature: `sig-${id}`,
   items: [
-    { foodId: id, name: proteinName, grams: 150, basis: 'raw' },
+    // a real food id (the app drops saved combos with unknown foods when it reads them); the shown name is `name`
+    { foodId: 'chicken-breast', name: proteinName, grams: 150, basis: 'raw' },
     { foodId: 'white-rice', name: '쌀밥', grams: 200, basis: 'cooked' },
   ],
   oils: [{ foodId: 'olive-oil', name: '올리브유', grams: 4.5, basis: 'raw' }],
@@ -34,14 +36,8 @@ const combo = (
 });
 
 async function seedSaved(page: Page, items: ReturnType<typeof combo>[]) {
-  // Only when the key is missing: addInitScript also runs on reload and must not undo what the page changed.
-  await page.addInitScript(
-    ([key, payload]) => {
-      if (window.localStorage.getItem(key as string) === null)
-        window.localStorage.setItem(key as string, payload as string);
-    },
-    [SAVED_KEY, JSON.stringify({ version: 1, items })],
-  );
+  void page;
+  await seedServer({ saved: items });
 }
 
 test('empty state points to the plan screen', async ({ page }) => {
@@ -106,6 +102,7 @@ test('delete asks first, can be cancelled, and survives a reload', async ({
   await page.getByRole('button', { name: /^두부.* 삭제$/ }).click();
   await page.getByRole('button', { name: /삭제 확인$/ }).click();
   await expect(page.getByRole('article')).toHaveCount(1);
+  await waitForSavedCombos(1);
   await page.reload();
   await expect(page.getByRole('article')).toHaveCount(1);
   await expect(page.getByRole('article').first()).toContainText('닭가슴살');
@@ -127,42 +124,31 @@ test('buttons are at least 44px', async ({ page }) => {
 });
 
 test('a star on the plan screen shows up here', async ({ page }) => {
-  await page.addInitScript(() =>
-    window.localStorage.setItem(
-      'diet-app-v1',
-      JSON.stringify({
-        version: 2,
-        state: {
-          profile: {
-            sex: 'female',
-            birthYear: 1996,
-            heightCm: 163,
-            weightKg: 60,
-            activityLevel: 2,
-            goal: 'lose',
-            mealsPerDay: 3,
-          },
-          styles: [],
-          overrides: {},
-          step: 0,
-          kits: [],
-          selection: {
-            foods: {
-              'chicken-breast': 'ok',
-              'white-rice': 'ok',
-              cabbage: 'ok',
-              lettuce: 'ok',
-            },
-            seasonings: {},
-          },
-        },
-      }),
-    ),
-  );
+  await seedServer({
+    profile: {
+      sex: 'female',
+      birthYear: 1996,
+      heightCm: 163,
+      weightKg: 60,
+      activityLevel: 2,
+      goal: 'lose',
+      mealsPerDay: 3,
+    },
+    selection: {
+      foods: {
+        'chicken-breast': 'ok',
+        'white-rice': 'ok',
+        cabbage: 'ok',
+        lettuce: 'ok',
+      },
+      seasonings: {},
+    },
+  });
   await page.goto('/plan');
   await page
     .getByRole('button', { name: '조합 1 저장' })
     .click({ timeout: 30_000 });
+  await waitForSavedCombos(1);
   await page.getByRole('link', { name: '저장한 조합 보기' }).click();
   await expect(page).toHaveURL(/\/saved$/);
   await expect(page.getByRole('article')).toHaveCount(1);

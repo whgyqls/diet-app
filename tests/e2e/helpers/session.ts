@@ -1,5 +1,6 @@
 // Logs a test user in without a browser and returns the session cookies in Playwright's format.
 // Uses the same @supabase/ssr cookie writer as the app, so the cookie names, encoding and chunking match.
+import { appendFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { createServerClient } from '@supabase/ssr';
 import type { TestProject } from '../../helpers/testProjectGuard';
@@ -9,6 +10,16 @@ export const STORAGE_STATE = path.resolve(
   process.cwd(),
   'test-results/e2e-auth/state.json',
 );
+
+/** One line per password login of this run (no secrets), so a run can report how many logins it made. */
+export const LOGIN_LOG = path.resolve(
+  process.cwd(),
+  'test-results/e2e-auth/logins.log',
+);
+export function noteLogin(who: string) {
+  mkdirSync(path.dirname(LOGIN_LOG), { recursive: true });
+  appendFileSync(LOGIN_LOG, `${new Date().toISOString()} ${who}\n`);
+}
 
 export type PwCookie = {
   name: string;
@@ -55,6 +66,7 @@ export async function signInCookies(
       },
     },
   });
+  noteLogin(email.split('-')[0]);
   const { error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) throw new Error(`e2e sign-in failed: ${error.message}`);
   await supabase.auth.getSession(); // lets pending cookie writes finish
