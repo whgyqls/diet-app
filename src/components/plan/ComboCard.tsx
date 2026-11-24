@@ -14,7 +14,9 @@ import {
 } from '@/lib/ui-labels';
 import type { LockSlot } from '@/lib/plan/planState';
 import type { SwapSlot } from '@/lib/nutrition/swap';
-import type { MealCombo } from '@/types/nutrition';
+import { requestFromCombo } from '@/lib/explain/payload';
+import type { Goal, MealCombo } from '@/types/nutrition';
+import { AiExplain } from './AiExplain';
 
 const r0 = (n: number) => Math.round(n);
 const r1 = (n: number) => Number(n.toFixed(1));
@@ -22,6 +24,7 @@ const r1 = (n: number) => Number(n.toFixed(1));
 /** One recommended combination. Numbers are shown as the engine computed them. */
 export function ComboCard({
   combo,
+  goal,
   index,
   total,
   picked,
@@ -35,6 +38,7 @@ export function ComboCard({
   onToggleSave,
 }: {
   combo: MealCombo;
+  goal: Goal;
   index: number;
   total: number;
   picked: boolean;
@@ -193,8 +197,9 @@ export function ComboCard({
         )}
       </section>
 
-      {/* Phase 6: AI explanation goes here. */}
-      <div data-slot="ai-explain" />
+      <div data-slot="ai-explain">
+        <AiExplain request={requestFromCombo(combo, goal)} />
+      </div>
 
       <div className="mt-auto pt-3">
         <button

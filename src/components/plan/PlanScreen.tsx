@@ -349,6 +349,7 @@ function Plan() {
                 renderCard={(card, i, total) => (
                   <ComboCard
                     combo={card.combo}
+                    goal={profile.goal}
                     index={i}
                     total={total}
                     picked={card.id === current.picked?.cardId}

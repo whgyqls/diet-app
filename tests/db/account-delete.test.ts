@@ -33,14 +33,12 @@ describe.skipIf(!testProjectConfigured())('account deletion (cascade)', () => {
     };
     ok(await admin.from('profiles').insert({ id }));
     ok(
-      await admin
-        .from('food_prefs')
-        .insert({
-          user_id: id,
-          item_id: 'chicken-breast',
-          kind: 'food',
-          status: 'ok',
-        }),
+      await admin.from('food_prefs').insert({
+        user_id: id,
+        item_id: 'chicken-breast',
+        kind: 'food',
+        status: 'ok',
+      }),
     );
     ok(
       await admin.from('ingredient_kits').insert({

@@ -24,10 +24,12 @@ test.describe('signed out', () => {
       'Supabase',
       'Netlify',
       'Google',
+      'OpenRouter',
+      'AI 설명',
       '설정 → 계정 삭제',
     ])
       await expect(notice).toContainText(text);
-    // no contact address, and nothing about the AI explanation yet
+    // no contact address, and the AI provider named is OpenRouter (not Anthropic)
     await expect(notice).not.toContainText('@');
     await expect(notice).not.toContainText('Anthropic');
   });

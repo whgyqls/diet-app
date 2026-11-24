@@ -120,7 +120,7 @@ test('picking another combo updates the day total and marks the card', async ({
   await expect(kcalBar).not.toHaveAttribute('aria-valuenow', before ?? '');
 });
 
-test('cards show basis, cooking hint, seasoning and the empty AI slot', async ({
+test('cards show basis, cooking hint, seasoning and the AI explanation button', async ({
   page,
 }) => {
   await seed(page, {
@@ -132,7 +132,12 @@ test('cards show basis, cooking hint, seasoning and the empty AI slot', async ({
   await expect(card).toBeVisible({ timeout: 30_000 });
   await expect(card.getByText(/\((생것|조리 후)\)/).first()).toBeVisible();
   await expect(card.getByText('양념 권장량')).toBeVisible();
-  await expect(card.locator('[data-slot="ai-explain"]')).toBeEmpty();
+  // the AI explanation is asked only when the button is pressed
+  await expect(
+    card
+      .locator('[data-slot="ai-explain"]')
+      .getByRole('button', { name: 'AI 설명 보기' }),
+  ).toBeVisible();
 });
 
 test('flag details are collapsed by default and open to show the source', async ({

@@ -134,7 +134,7 @@ export const NOTICE_TEXT = {
  * it. One text so the two cannot drift apart (checked by tests/e2e/privacy.spec.ts).
  */
 export const ACCOUNT_DATA_TEXT =
-  '프로필, 재료 선택, 내 재료 세트, 저장한 조합(★)';
+  '프로필, 재료 선택, 내 재료 세트, 저장한 조합(★), AI 설명 사용 기록';
 
 // ---- Plan screen: foods that must be in the day (Phase 6b) ----
 export const INCLUDE_TEXT = {
@@ -174,3 +174,13 @@ export const includeDroppedText = (
         : `${i.name}을(를) 선택에서 뺐어서 꼭 넣을 재료에서도 뺐어요.`,
     )
     .join(' ');
+
+// ---- Plan screen: AI explanation (Phase 6) ----
+export const AI_TEXT = {
+  button: 'AI 설명 보기',
+  loading: 'AI가 설명을 쓰는 중…',
+  tag: 'AI 설명',
+  note: 'AI가 쓴 문장이라 부정확할 수 있어요. 숫자는 위 계산 결과예요.',
+  fallbackLimit: '오늘은 AI 설명을 더 쓸 수 없어서 기본 설명을 보여드려요.',
+  fallbackError: 'AI 설명을 가져오지 못해 기본 설명을 보여드려요.',
+} as const;

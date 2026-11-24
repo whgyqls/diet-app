@@ -194,14 +194,12 @@ describe.skipIf(!testProjectConfigured())('RLS on the test project', () => {
       .update({ user_id: B.id })
       .eq('user_id', A.id);
     expect(saved.error?.code).toBe('42501');
-    const ins = await A.client
-      .from('food_prefs')
-      .insert({
-        user_id: A.id,
-        item_id: 'lettuce',
-        kind: 'food',
-        status: 'ok',
-      });
+    const ins = await A.client.from('food_prefs').insert({
+      user_id: A.id,
+      item_id: 'lettuce',
+      kind: 'food',
+      status: 'ok',
+    });
     expect(ins.error?.code).toBe('42501');
     const del = await A.client.from('food_prefs').delete().eq('user_id', A.id);
     expect(del.error?.code).toBe('42501');
