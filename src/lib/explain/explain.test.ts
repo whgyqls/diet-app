@@ -3,9 +3,8 @@ import { callOpenRouter, safeMessage } from './openrouter';
 import {
   DEFAULT_MODEL,
   EXPLAIN_LIMITS,
-  FALLBACK_MODELS,
-  MAX_MODELS_PER_REQUEST,
-  modelsForRequest,
+  MODEL_ATTEMPTS,
+  attemptsFor,
   pickModel,
   utcDay,
 } from './config';
@@ -235,12 +234,12 @@ describe('config', () => {
     expect(utcDay(new Date('2026-11-24T23:59:59Z'))).toBe('2026-11-24');
     expect(utcDay(new Date('2026-11-25T00:00:00Z'))).toBe('2026-11-25');
   });
-  it('keeps the limits the user chose', () => {
+  it('keeps the limits the user chose (15 a day each, 45 for the site; 45 s on the server, 50 s in the browser)', () => {
     expect(EXPLAIN_LIMITS).toMatchObject({
-      userPerDay: 5,
+      userPerDay: 15,
       sitePerDay: 45,
-      serverTimeoutMs: 8000,
-      clientTimeoutMs: 15000,
+      serverTotalMs: 45000,
+      clientTimeoutMs: 50000,
     });
   });
 });
@@ -559,46 +558,6 @@ describe('callOpenRouter: a response without usable text says what was missing',
   });
 });
 
-describe('callOpenRouter: models to try', () => {
-  const sent = async (fallbacks?: readonly string[], model = 'a/one:free') => {
-    const f = (async () =>
-      new Response('{}', { status: 200 })) as unknown as typeof fetch;
-    const spy = vi.fn(f);
-    await callOpenRouter({
-      apiKey: 'k',
-      model,
-      fallbacks,
-      input,
-      fetchImpl: spy as unknown as typeof fetch,
-    });
-    return JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
-  };
-  it('sends one model as `model`, several as the `models` array in priority order', async () => {
-    expect(await sent()).toMatchObject({ model: 'a/one:free' });
-    expect(await sent([])).not.toHaveProperty('models');
-    const b = await sent(['b/two:free', 'c/three:free']);
-    expect(b.models).toEqual(['a/one:free', 'b/two:free', 'c/three:free']);
-    expect(b).not.toHaveProperty('model');
-  });
-  it('does not list the same model twice', async () => {
-    expect(await sent(['a/one:free'])).toMatchObject({ model: 'a/one:free' });
-    expect((await sent(['b/two:free', 'b/two:free'])).models).toEqual([
-      'a/one:free',
-      'b/two:free',
-    ]);
-  });
-  it('the default is a fixed free model with a free fallback only', () => {
-    expect(DEFAULT_MODEL).toBe('google/gemma-4-26b-a4b-it:free');
-    expect(FALLBACK_MODELS).toEqual([
-      'google/gemma-4-31b-it:free',
-      'nvidia/nemotron-3.5-super-vl:free',
-    ]);
-    for (const m of [DEFAULT_MODEL, ...FALLBACK_MODELS])
-      expect(m.endsWith(':free')).toBe(true);
-    expect(DEFAULT_MODEL).not.toBe('openrouter/free');
-  });
-});
-
 describe('callOpenRouter: who refused a 429 (names and numbers only)', () => {
   const NOW = 1_700_000_000_000;
   const refuse = (
@@ -687,43 +646,6 @@ describe('callOpenRouter: who refused a 429 (names and numbers only)', () => {
   });
 });
 
-describe('the models of one request stay within the limit', () => {
-  it('DEFAULT_MODEL and FALLBACK_MODELS together fit the limit, are free, and are not repeated', () => {
-    const all = [DEFAULT_MODEL, ...FALLBACK_MODELS];
-    expect(MAX_MODELS_PER_REQUEST).toBe(3);
-    expect(all.length).toBeLessThanOrEqual(MAX_MODELS_PER_REQUEST);
-    expect(new Set(all).size).toBe(all.length);
-    for (const m of all) expect(m).toMatch(/^[a-z0-9._-]+\/[a-z0-9._-]+:free$/);
-    expect(modelsForRequest(DEFAULT_MODEL, FALLBACK_MODELS)).toEqual(all);
-  });
-  it('modelsForRequest never returns more than the limit, drops repeats and blanks, keeps the order', () => {
-    expect(modelsForRequest('a/1', ['a/2', 'a/3', 'a/4', 'a/5'])).toEqual([
-      'a/1',
-      'a/2',
-      'a/3',
-    ]);
-    expect(modelsForRequest('a/1', ['a/1', '', 'a/2'])).toEqual(['a/1', 'a/2']);
-    expect(modelsForRequest('a/1', [])).toEqual(['a/1']);
-    // an OPENROUTER_MODEL override cannot push the list over the limit either
-    expect(modelsForRequest('x/override', FALLBACK_MODELS)).toHaveLength(3);
-  });
-  it('the request body lists at most the limit, even when more fallbacks are given', async () => {
-    const f = vi.fn(async () => new Response('{}', { status: 200 }));
-    await callOpenRouter({
-      apiKey: 'k',
-      model: 'a/1',
-      fallbacks: ['a/2', 'a/3', 'a/4', 'a/5', 'a/6'],
-      input,
-      fetchImpl: f as unknown as typeof fetch,
-    });
-    const body = JSON.parse(
-      (f.mock.calls[0] as unknown as [string, RequestInit])[1].body as string,
-    );
-    expect(body.models).toEqual(['a/1', 'a/2', 'a/3']);
-    expect(body.models.length).toBeLessThanOrEqual(MAX_MODELS_PER_REQUEST);
-  });
-});
-
 describe('safeMessage and the message of a failed request', () => {
   // built from pieces: the source file must not hold anything shaped like a real key
   const fakeKey = ['sk', 'or', 'v1', 'x'.repeat(40)].join('-');
@@ -794,5 +716,105 @@ describe('safeMessage and the message of a failed request', () => {
       reason: 'HTTP',
       status: 400,
     });
+  });
+});
+
+describe('callOpenRouter: one model per request', () => {
+  const body = async (
+    args: Partial<Parameters<typeof callOpenRouter>[0]> = {},
+  ) => {
+    const f = vi.fn(async () => new Response('{}', { status: 200 }));
+    await callOpenRouter({
+      apiKey: 'k',
+      model: 'a/one:free',
+      input,
+      fetchImpl: f as unknown as typeof fetch,
+      ...args,
+    });
+    return JSON.parse(
+      (f.mock.calls[0] as unknown as [string, RequestInit])[1].body as string,
+    );
+  };
+  it('sends `model` alone, never a `models` list, and no reasoning field unless the model has one', async () => {
+    const b = await body();
+    expect(b.model).toBe('a/one:free');
+    expect(b).not.toHaveProperty('models');
+    expect(b).not.toHaveProperty('reasoning');
+    expect(b).toHaveProperty('messages');
+    expect(b.max_tokens).toBe(EXPLAIN_LIMITS.maxTokens);
+  });
+  it("adds the model's own extra fields: reasoning off for the model that thinks by default", async () => {
+    const b = await body({
+      model: 'n/x:free',
+      extra: { reasoning: { enabled: false } },
+    });
+    expect(b.reasoning).toEqual({ enabled: false });
+    expect(b.model).toBe('n/x:free');
+  });
+  it('uses the time it is given for the request', async () => {
+    const slow = ((_u: string, init: RequestInit) =>
+      new Promise((_r, rej) =>
+        init.signal?.addEventListener('abort', () =>
+          rej(Object.assign(new Error('t'), { name: 'TimeoutError' })),
+        ),
+      )) as unknown as typeof fetch;
+    const t0 = Date.now();
+    const r = await callOpenRouter({
+      apiKey: 'k',
+      model: 'a/1',
+      input,
+      fetchImpl: slow,
+      timeoutMs: 40,
+    });
+    expect(r).toEqual({ ok: false, reason: 'TIMEOUT' });
+    expect(Date.now() - t0).toBeLessThan(1000);
+  });
+});
+
+describe('the free models: the order they are tried in', () => {
+  it('Gemma 26B, Gemma 31B, then nemotron with reasoning off; only free models, no repeats', () => {
+    expect(MODEL_ATTEMPTS.map((a) => a.model)).toEqual([
+      'google/gemma-4-26b-a4b-it:free',
+      'google/gemma-4-31b-it:free',
+      'nvidia/nemotron-3.5-super-vl:free',
+    ]);
+    expect(MODEL_ATTEMPTS[0].model).toBe(DEFAULT_MODEL);
+    for (const a of MODEL_ATTEMPTS)
+      expect(a.model).toMatch(/^[a-z0-9._-]+\/[a-z0-9._-]+:free$/);
+    expect(new Set(MODEL_ATTEMPTS.map((a) => a.model)).size).toBe(
+      MODEL_ATTEMPTS.length,
+    );
+  });
+  it('only nemotron gets an extra field (reasoning enabled: false); the Gemma models get none', () => {
+    expect(MODEL_ATTEMPTS.map((a) => a.extra)).toEqual([
+      undefined,
+      undefined,
+      { reasoning: { enabled: false } },
+    ]);
+  });
+  it('the times: 10 s, 10 s and 35 s, each try is skipped under its minimum, and one try fits the total', () => {
+    expect(MODEL_ATTEMPTS.map((a) => a.timeoutMs)).toEqual([
+      10_000, 10_000, 35_000,
+    ]);
+    for (const a of MODEL_ATTEMPTS) {
+      expect(a.minMs).toBeGreaterThan(0);
+      expect(a.minMs).toBeLessThanOrEqual(a.timeoutMs);
+      expect(a.timeoutMs).toBeLessThanOrEqual(EXPLAIN_LIMITS.serverTotalMs);
+    }
+    // the browser always waits longer than the whole server side
+    expect(EXPLAIN_LIMITS.clientTimeoutMs).toBeGreaterThan(
+      EXPLAIN_LIMITS.serverTotalMs,
+    );
+  });
+  it('an OPENROUTER_MODEL override replaces only the first model (and drops its extra), the rest stays', () => {
+    expect(attemptsFor(DEFAULT_MODEL)).toEqual([...MODEL_ATTEMPTS]);
+    const o = attemptsFor('x/override');
+    expect(o.map((a) => a.model)).toEqual([
+      'x/override',
+      MODEL_ATTEMPTS[1].model,
+      MODEL_ATTEMPTS[2].model,
+    ]);
+    expect(o[0].extra).toBeUndefined();
+    expect(o[2].extra).toEqual({ reasoning: { enabled: false } });
   });
 });

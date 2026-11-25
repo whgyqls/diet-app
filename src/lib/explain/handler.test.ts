@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
+import { MODEL_ATTEMPTS } from './config';
 import { handleExplain, type ExplainDeps } from './handler';
 import type { ExplainRequest } from './types';
 
@@ -40,7 +41,7 @@ function deps(over: Partial<ExplainDeps> = {}) {
     consume: vi.fn(async () => true),
     call: vi.fn(async () => ({ ok: true as const, content: GOOD })),
     refund: vi.fn(async () => {}),
-    hasFallbackModels: true,
+    attempts: [{ model: 'm/x', timeoutMs: 8000, minMs: 0 }],
     log: vi.fn(),
     ...over,
   };
@@ -181,12 +182,14 @@ describe('handleExplain', () => {
     const lines = (d.log as ReturnType<typeof vi.fn>).mock.calls.map(
       (c) => c[0] as string,
     );
-    expect(lines).toHaveLength(1);
-    expect(lines[0]).toBe(
-      '[explain] fallback reason=INVALID cause=BANNED_WORD detail=혈당 model=vendor/some-free:model finish=stop ms=0',
-    );
-    for (const w of ['비밀문장XYZ', '닭가슴살', 'user-1', 'sk-or', 'Bearer'])
-      expect(lines[0]).not.toContain(w);
+    // an answer our checks refuse is asked for once more from the same model: the first try, then the fallback
+    expect(lines).toEqual([
+      '[explain] attempt try=1 asked=m/x reason=INVALID cause=BANNED_WORD detail=혈당 model=vendor/some-free:model finish=stop ms=0',
+      '[explain] fallback reason=INVALID cause=BANNED_WORD detail=혈당 model=vendor/some-free:model finish=stop ms=0 attempts=2',
+    ]);
+    for (const l of lines)
+      for (const w of ['비밀문장XYZ', '닭가슴살', 'user-1', 'sk-or', 'Bearer'])
+        expect(l).not.toContain(w);
   });
 
   it('logs the cause for every other way to fall back', async () => {
@@ -224,7 +227,10 @@ describe('handleExplain', () => {
     ]);
     expect(
       await run({ call: async () => ({ ok: true, content: '그냥 {문장' }) }),
-    ).toEqual(['[explain] fallback reason=INVALID cause=PARSE ms=0']);
+    ).toEqual([
+      '[explain] attempt try=1 asked=m/x reason=INVALID cause=PARSE ms=0',
+      '[explain] fallback reason=INVALID cause=PARSE ms=0 attempts=2',
+    ]);
   });
 
   it('does not log anything for an answer that is shown, and a value with odd characters is made safe', async () => {
@@ -273,16 +279,19 @@ describe('handleExplain', () => {
   it('logs the call time and token numbers, and turns an empty cut-off answer into TRUNCATED', async () => {
     let t = 1_000_000;
     const d = deps({
-      now: () => new Date((t += 2500)),
-      call: async () => ({
-        ok: false,
-        reason: 'BAD_RESPONSE',
-        detail: 'CONTENT_EMPTY+REASONING',
-        model: 'nvidia/some-reasoning:free',
-        finish: 'length',
-        tokens: 600,
-        reasoningTokens: 598,
-      }),
+      now: () => new Date(t),
+      call: async () => {
+        t += 2500; // the call takes 2.5 s
+        return {
+          ok: false as const,
+          reason: 'BAD_RESPONSE' as const,
+          detail: 'CONTENT_EMPTY+REASONING',
+          model: 'nvidia/some-reasoning:free',
+          finish: 'length',
+          tokens: 600,
+          reasoningTokens: 598,
+        };
+      },
     });
     const r = await send(d);
     expect(r.body).toMatchObject({ source: 'fallback', reason: 'INVALID' });
@@ -393,154 +402,258 @@ describe('handleExplain', () => {
       '[explain] fallback reason=BUSY cause=RATE_LIMIT scope=provider provider=Google_AI_Studio provider_code=429 rl_limit=50 rl_remaining=0 rl_reset_in=31200 retry_after=60 ms=0 refund=yes',
     );
   });
+});
 
-  describe('a 400 on a request that lists several models', () => {
-    const bad400 = {
-      ok: false as const,
-      reason: 'HTTP' as const,
-      status: 400,
-      message: 'models: too many items (max 3)',
-    };
-    const good = {
-      ok: true as const,
-      content: GOOD,
-      model: 'google/gemma-4-26b-a4b-it:free',
-      finish: 'stop',
-      tokens: 40,
-    };
-    const lines = (d: ExplainDeps) =>
-      (d.log as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0] as string);
+// ---- the free models, one request each, in order ----
+describe('handleExplain: the tries', () => {
+  type Reply = Awaited<ReturnType<ExplainDeps['call']>>;
+  const G1 = MODEL_ATTEMPTS[0].model;
+  const G2 = MODEL_ATTEMPTS[1].model;
+  const NEM = MODEL_ATTEMPTS[2].model;
+  const rate: Reply = {
+    ok: false,
+    reason: 'RATE_LIMIT',
+    scope: 'provider',
+    provider: 'Google AI Studio',
+  };
+  const timeout: Reply = { ok: false, reason: 'TIMEOUT' };
+  const good = (model: string): Reply => ({
+    ok: true,
+    content: GOOD,
+    model,
+    finish: 'stop',
+    tokens: 40,
+  });
+  const refused: Reply = {
+    ok: true,
+    content: '{"text":"닭가슴살 999g이에요. 천천히 드세요."}',
+    finish: 'stop',
+  };
+  const lines = (d: ExplainDeps) =>
+    (d.log as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0] as string);
 
-    it('asks again with the first model alone, shows that answer, and logs the 400 and the success with via=single_retry', async () => {
-      const call = vi.fn(
-        async (
-          _i: unknown,
-          _m: string,
-          opts?: { single?: boolean; timeoutMs?: number },
-        ) => (opts?.single ? good : bad400),
-      );
-      const d = deps({ call: call as unknown as ExplainDeps['call'] });
-      const r = await send(d);
-      expect(r.body).toMatchObject({ source: 'ai' });
-      expect(call).toHaveBeenCalledTimes(2);
-      expect(call.mock.calls[0][2]).toBeUndefined();
-      expect(call.mock.calls[1][2]).toMatchObject({ single: true });
-      expect(d.cachePut).toHaveBeenCalledTimes(1);
-      expect(d.refund).not.toHaveBeenCalled();
+  /** Runs with the production tries. `script` gives the reply of each call, and how long that call takes (ms). */
+  function run(script: [Reply, number?][], over: Partial<ExplainDeps> = {}) {
+    let t = 0;
+    let i = 0;
+    const call = vi.fn(async () => {
+      const [reply, took = 0] = script[Math.min(i++, script.length - 1)];
+      t += took;
+      return reply;
+    });
+    const d = deps({
+      attempts: MODEL_ATTEMPTS,
+      now: () => new Date(1_700_000_000_000 + t),
+      call: call as unknown as ExplainDeps['call'],
+      ...over,
+    });
+    return {
+      d,
+      call,
+      calls: () =>
+        call.mock.calls as unknown as [
+          unknown,
+          { model: string; extra?: unknown; timeoutMs: number },
+        ][],
+    };
+  }
+
+  it('a first model that answers is the only one asked, and nothing is logged', async () => {
+    const { d, call } = run([[good(G1)]]);
+    expect((await send(d)).body).toMatchObject({ source: 'ai' });
+    expect(call).toHaveBeenCalledTimes(1);
+    expect(d.log).not.toHaveBeenCalled();
+  });
+
+  it("goes through the models in order, one request each, with the model's own extra and time", async () => {
+    const { d, calls } = run([
+      [rate, 150],
+      [rate, 130],
+      [good(NEM), 20_000],
+    ]);
+    const r = await send(d);
+    expect(r.body).toMatchObject({ source: 'ai' });
+    expect(calls().map((c) => c[1].model)).toEqual([G1, G2, NEM]);
+    expect(calls().map((c) => c[1].extra)).toEqual([
+      undefined,
+      undefined,
+      { reasoning: { enabled: false } },
+    ]);
+    expect(calls().map((c) => c[1].timeoutMs)).toEqual([
+      10_000, 10_000, 35_000,
+    ]);
+    // the text is cached with the model that wrote it, under the key of the first model
+    expect(d.cachePut).toHaveBeenCalledWith(
+      expect.any(String),
+      NEM,
+      expect.stringContaining('150g'),
+    );
+    expect(d.refund).not.toHaveBeenCalled();
+  });
+
+  it('logs each failed try, then the success with its try number', async () => {
+    const { d } = run([
+      [rate, 150],
+      [rate, 130],
+      [good(NEM), 20_000],
+    ]);
+    await send(d);
+    expect(lines(d)).toEqual([
+      `[explain] attempt try=1 asked=${G1} reason=BUSY cause=RATE_LIMIT scope=provider provider=Google_AI_Studio ms=150`,
+      `[explain] attempt try=2 asked=${G2} reason=BUSY cause=RATE_LIMIT scope=provider provider=Google_AI_Studio ms=130`,
+      `[explain] ok try=3 asked=${NEM} model=${NEM} finish=stop tokens=40 ms=20280`,
+    ]);
+  });
+
+  it('when every model fails the answer is the fallback sentence, the last failure is the fallback line and the call is given back', async () => {
+    const { d, call } = run([
+      [rate, 150],
+      [rate, 130],
+      [timeout, 35_000],
+    ]);
+    const r = await send(d);
+    expect(call).toHaveBeenCalledTimes(3);
+    expect(r.body).toMatchObject({ source: 'fallback', reason: 'BUSY' });
+    expect(d.refund).toHaveBeenCalledTimes(1);
+    expect(d.cachePut).not.toHaveBeenCalled();
+    const l = lines(d);
+    expect(l).toHaveLength(3);
+    expect(l[0]).toContain('attempt try=1');
+    expect(l[1]).toContain('attempt try=2');
+    expect(l[2]).toBe(
+      '[explain] fallback reason=BUSY cause=TIMEOUT ms=35280 refund=yes attempts=3',
+    );
+  });
+
+  it('does not give the call back when any model got as far as an answer our checks refuse', async () => {
+    const { d } = run([
+      [rate, 150],
+      [refused, 2000],
+      [refused, 2000],
+      [rate, 100],
+    ]);
+    await send(d);
+    expect(d.refund).not.toHaveBeenCalled();
+  });
+
+  it('skips a model when less than its minimum is left: nemotron needs 30 s of the 45 s', async () => {
+    const { d, calls } = run([
+      [timeout, 10_000],
+      [timeout, 10_000],
+      [good(NEM)],
+    ]);
+    const r = await send(d);
+    // 20 s are used, 25 s are left: nemotron (minimum 30 s) is not asked
+    expect(calls().map((c) => c[1].model)).toEqual([G1, G2]);
+    expect(r.body).toMatchObject({ source: 'fallback', reason: 'BUSY' });
+    expect(lines(d)[1]).toContain('attempts=2');
+    expect(d.refund).toHaveBeenCalledTimes(1);
+  });
+
+  it('a try never gets more time than is left of the whole', async () => {
+    const attempts = [
+      { model: 'a/1:free', timeoutMs: 50_000, minMs: 1000 },
+      { model: 'b/2:free', timeoutMs: 20_000, minMs: 1000 },
+    ];
+    const { calls } = run([[timeout, 40_000], [good('b/2:free')]], {
+      attempts,
+    });
+    const { d, calls: c2 } = run([[timeout, 40_000], [good('b/2:free')]], {
+      attempts,
+    });
+    await send(d);
+    expect(c2().map((c) => c[1].timeoutMs)).toEqual([45_000, 5_000]);
+    void calls;
+  });
+
+  it('with no time for any try the answer is the fallback sentence and nothing was asked', async () => {
+    const { d, call } = run([[good(G1)]], {
+      attempts: [{ model: 'a/1:free', timeoutMs: 10_000, minMs: 60_000 }],
+    });
+    const r = await send(d);
+    expect(call).not.toHaveBeenCalled();
+    expect(r.body).toMatchObject({ source: 'fallback', reason: 'UNAVAILABLE' });
+    expect(lines(d)[0]).toContain('cause=NO_TIME');
+    expect(d.refund).not.toHaveBeenCalled();
+  });
+
+  describe('a refused answer is asked for once more from the same model, only when twice its time is left', () => {
+    it('the second try of the same model can answer', async () => {
+      const { d, calls } = run([
+        [refused, 2000],
+        [good(G1), 2000],
+      ]);
+      expect((await send(d)).body).toMatchObject({ source: 'ai' });
+      expect(calls().map((c) => c[1].model)).toEqual([G1, G1]);
       expect(lines(d)).toEqual([
-        '[explain] retry reason=UNAVAILABLE cause=HTTP status=400 msg="models: too many items (max 3)" ms=0 via=single_retry',
-        '[explain] ok model=google/gemma-4-26b-a4b-it:free finish=stop tokens=40 ms=0 via=single_retry',
+        `[explain] attempt try=1 asked=${G1} reason=INVALID cause=NEW_NUMBER detail=unit finish=stop ms=2000`,
+        `[explain] ok try=2 asked=${G1} model=${G1} finish=stop tokens=40 ms=4000`,
       ]);
     });
-
-    it('gives the second request only the time that is left of the server wait', async () => {
-      let t = 0;
-      const call = vi.fn(
-        async (
-          _i: unknown,
-          _m: string,
-          opts?: { single?: boolean; timeoutMs?: number },
-        ) => {
-          t += opts?.single ? 300 : 1000; // the first request took 1 s
-          return opts?.single ? good : bad400;
-        },
-      );
-      const d = deps({
-        now: () => new Date(1_700_000_000_000 + t),
-        call: call as unknown as ExplainDeps['call'],
-      });
+    it('only once: a second refused answer moves on to the next model', async () => {
+      const { calls } = run([[refused, 1000], [refused, 1000], [good(G2)]]);
+      const { d, calls: c } = run([
+        [refused, 1000],
+        [refused, 1000],
+        [good(G2)],
+      ]);
       await send(d);
-      expect(call.mock.calls[1][2]!.timeoutMs).toBe(7000);
+      expect(c().map((x) => x[1].model)).toEqual([G1, G1, G2]);
+      void calls;
     });
-
-    it('does not ask again when too little time is left', async () => {
-      let t = 0;
-      const call = vi.fn(async () => {
-        t += 7000; // 1 s left, below the minimum
-        return bad400;
-      });
-      const d = deps({
-        now: () => new Date(1_700_000_000_000 + t),
-        call: call as unknown as ExplainDeps['call'],
-      });
-      const r = await send(d);
-      expect(call).toHaveBeenCalledTimes(1);
-      expect(r.body).toMatchObject({
-        source: 'fallback',
-        reason: 'UNAVAILABLE',
-      });
-    });
-
-    it('when the second request fails too, the fallback line says via=single_retry, and the call is given back', async () => {
-      const call = vi.fn(
-        async (_i: unknown, _m: string, opts?: { single?: boolean }) =>
-          opts?.single
-            ? {
-                ok: false as const,
-                reason: 'RATE_LIMIT' as const,
-                scope: 'provider' as const,
-              }
-            : bad400,
+    it('not when too little time is left for another try of that length', async () => {
+      // the first try took 30 s: twice that is not left of the 45 s
+      const attempts = [
+        { model: 'a/1:free', timeoutMs: 40_000, minMs: 1000 },
+        { model: 'b/2:free', timeoutMs: 10_000, minMs: 1000 },
+      ];
+      const { d, calls } = run(
+        [
+          [refused, 30_000],
+          [good('b/2:free'), 1000],
+        ],
+        { attempts },
       );
-      const d = deps({ call: call as unknown as ExplainDeps['call'] });
-      const r = await send(d);
-      expect(r.body).toMatchObject({ source: 'fallback', reason: 'BUSY' });
-      expect(d.refund).toHaveBeenCalledTimes(1);
-      expect(lines(d)[1]).toBe(
-        '[explain] fallback reason=BUSY cause=RATE_LIMIT scope=provider ms=0 refund=yes via=single_retry',
-      );
-    });
-
-    it('a second 400 is reported with its message and the call is given back', async () => {
-      const d = deps({ call: async () => bad400 });
       await send(d);
-      expect(lines(d)).toHaveLength(2);
-      expect(lines(d)[1]).toBe(
-        '[explain] fallback reason=UNAVAILABLE cause=HTTP status=400 msg="models: too many items (max 3)" ms=0 refund=yes via=single_retry',
-      );
-      expect(d.refund).toHaveBeenCalledTimes(1);
+      expect(calls().map((c) => c[1].model)).toEqual(['a/1:free', 'b/2:free']);
     });
-
-    it('is not retried for any other status, nor when the request listed only one model', async () => {
-      for (const status of [401, 402, 403, 404, 500, 502]) {
-        const call = vi.fn(async () => ({
-          ok: false as const,
-          reason: 'HTTP' as const,
-          status,
-        }));
-        await send(deps({ call: call as unknown as ExplainDeps['call'] }));
-        expect(call, String(status)).toHaveBeenCalledTimes(1);
+    it('not for any other failure: 429, timeout, HTTP error, cut-off and empty answers go straight to the next model', async () => {
+      const others: Reply[] = [
+        rate,
+        timeout,
+        { ok: false, reason: 'HTTP', status: 502 },
+        { ok: true, content: GOOD, finish: 'length' },
+        { ok: false, reason: 'BAD_RESPONSE', detail: 'CONTENT_EMPTY' },
+      ];
+      for (const first of others) {
+        const { d, calls } = run([[first], [good(G2)]]);
+        await send(d);
+        expect(
+          calls().map((c) => c[1].model),
+          JSON.stringify(first),
+        ).toEqual([G1, G2]);
       }
-      const call = vi.fn(async () => bad400);
-      await send(
-        deps({
-          hasFallbackModels: false,
-          call: call as unknown as ExplainDeps['call'],
-        }),
-      );
-      expect(call).toHaveBeenCalledTimes(1);
     });
+  });
 
-    it('a request that went fine is never asked twice and logs nothing', async () => {
-      const call = vi.fn(async () => good);
-      const d = deps({ call: call as unknown as ExplainDeps['call'] });
-      await send(d);
-      expect(call).toHaveBeenCalledTimes(1);
-      expect(d.log).not.toHaveBeenCalled();
-    });
-
-    it('the message in the log has no body, key or user data, and the response to the browser carries none of it', async () => {
-      const d = deps({
-        call: async () => ({
-          ok: false as const,
-          reason: 'HTTP' as const,
+  it('never puts the key, a response, an error message or the user into a log line', async () => {
+    const { d } = run([
+      [
+        {
+          ok: false,
+          reason: 'HTTP',
           status: 400,
-          message: 'bad "quote" {x} user-1 Bearer abc',
-        }),
-      });
-      const r = await send(d);
-      expect(JSON.stringify(r.body)).not.toContain('quote');
-      expect(lines(d)[0]).toContain('msg="bad _quote_ _x_ user-1 Bearer abc"');
-    });
+          message: 'bad request user-1 Bearer abc',
+        },
+        100,
+      ],
+      [refused, 100],
+      [refused, 100],
+      [rate, 100],
+    ]);
+    const r = await send(d);
+    expect(JSON.stringify(r.body)).not.toMatch(/Bearer|user-1|bad request/);
+    for (const l of lines(d))
+      expect(l).not.toMatch(/999g|닭가슴살|sk-or|Authorization/);
   });
 });

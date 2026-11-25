@@ -3,12 +3,7 @@
 import { createHash } from 'node:crypto';
 import { NextResponse, type NextRequest } from 'next/server';
 import { isSameOrigin } from '@/lib/account/deleteRequest';
-import {
-  EXPLAIN_LIMITS,
-  FALLBACK_MODELS,
-  modelsForRequest,
-  pickModel,
-} from '@/lib/explain/config';
+import { EXPLAIN_LIMITS, attemptsFor, pickModel } from '@/lib/explain/config';
 import { handleExplain, type ExplainDeps } from '@/lib/explain/handler';
 import { callOpenRouter } from '@/lib/explain/openrouter';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -18,6 +13,7 @@ export async function POST(request: NextRequest) {
   const model = pickModel(process.env.OPENROUTER_MODEL);
   const deps: ExplainDeps = {
     model,
+    attempts: attemptsFor(model),
     now: () => new Date(),
     isSameOrigin,
     getUserId: async () => {
@@ -61,14 +57,13 @@ export async function POST(request: NextRequest) {
       if (error) throw new Error('refund_failed');
     },
     log: (line) => console.warn(line),
-    hasFallbackModels: modelsForRequest(model, FALLBACK_MODELS).length > 1,
-    call: (input, m, opts) =>
+    call: (input, attempt) =>
       callOpenRouter({
         apiKey: process.env.OPENROUTER_API_KEY,
-        model: m,
-        fallbacks: opts?.single ? [] : FALLBACK_MODELS,
+        model: attempt.model,
+        extra: attempt.extra,
         input,
-        timeoutMs: opts?.timeoutMs,
+        timeoutMs: attempt.timeoutMs,
       }),
   };
   const { status, body } = await handleExplain(deps, {

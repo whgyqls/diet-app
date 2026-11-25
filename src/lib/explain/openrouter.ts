@@ -4,7 +4,7 @@ import {
   APP_TITLE,
   EXPLAIN_LIMITS,
   OPENROUTER_URL,
-  modelsForRequest,
+  type ModelAttempt,
 } from './config';
 import { SYSTEM_PROMPT, userPrompt } from './prompt';
 import type { ExplainInput } from './types';
@@ -136,8 +136,8 @@ const omitUndefined = <T extends object>(o: T): T =>
 export async function callOpenRouter(args: {
   apiKey: string | undefined;
   model: string;
-  /** Models to try, in order, when `model` errors (OpenRouter's `models` array). */
-  fallbacks?: readonly string[];
+  /** Extra request fields of this model (see ModelAttempt.extra). */
+  extra?: ModelAttempt['extra'];
   input: ExplainInput;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
@@ -146,7 +146,6 @@ export async function callOpenRouter(args: {
   const { apiKey, model, input } = args;
   if (!apiKey) return { ok: false, reason: 'NO_KEY' };
   const doFetch = args.fetchImpl ?? fetch;
-  const models = modelsForRequest(model, args.fallbacks ?? []);
   try {
     const res = await doFetch(OPENROUTER_URL, {
       method: 'POST',
@@ -156,8 +155,8 @@ export async function callOpenRouter(args: {
         'X-Title': APP_TITLE,
       },
       body: JSON.stringify({
-        // one model: `model`; several: the `models` array in priority order
-        ...(models.length > 1 ? { models } : { model }),
+        model,
+        ...args.extra,
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: userPrompt(input) },
@@ -166,7 +165,7 @@ export async function callOpenRouter(args: {
         temperature: 0.3,
       }),
       signal: AbortSignal.timeout(
-        args.timeoutMs ?? EXPLAIN_LIMITS.serverTimeoutMs,
+        args.timeoutMs ?? EXPLAIN_LIMITS.serverTotalMs,
       ),
     });
     if (!res.ok) {

@@ -178,7 +178,7 @@ export const includeDroppedText = (
 // ---- Plan screen: AI explanation (Phase 6) ----
 export const AI_TEXT = {
   button: 'AI 설명 보기',
-  loading: 'AI가 설명을 쓰는 중…',
+  loading: 'AI가 설명을 쓰는 중이에요. 최대 30초 정도 걸릴 수 있어요.',
   tag: 'AI 설명',
   note: 'AI가 쓴 문장이라 부정확할 수 있어요. 숫자는 위 계산 결과예요.',
   fallbackLimit: '오늘은 AI 설명을 더 쓸 수 없어서 기본 설명을 보여드려요.',

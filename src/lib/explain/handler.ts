@@ -1,7 +1,9 @@
 // The /api/explain flow with its dependencies passed in, so it can be tested without network or database.
-// Order: same origin -> signed in -> valid request -> cache -> daily limits -> AI -> check -> cache.
-// Whatever goes wrong after the request is valid, the answer is 200 with the fallback sentence.
-import { EXPLAIN_LIMITS, utcDay } from './config';
+// Order: same origin -> signed in -> valid request -> cache -> daily limits -> AI tries -> check -> cache.
+// The AI is asked one model at a time (config.ts MODEL_ATTEMPTS). A try that fails (429, error, no text, an answer
+// our checks refuse) goes on to the next model while time is left. Whatever goes wrong after the request is
+// valid, the answer is 200 with the fallback sentence.
+import { EXPLAIN_LIMITS, utcDay, type ModelAttempt } from './config';
 import { fallbackText } from './fallback';
 import { cacheKeyText, explainRequestSchema, toInput } from './payload';
 import { checkExplanation, extractExplanation } from './validate';
@@ -9,28 +11,32 @@ import type { CallResult, Refusal } from './openrouter';
 import type { ExplainInput, ExplainResponse, FallbackReason } from './types';
 
 export type ExplainDeps = {
+  /** The first model: the one the cache key is made with. */
   model: string;
+  /** The tries, in order (config.ts attemptsFor). */
+  attempts: readonly ModelAttempt[];
   now: () => Date;
   isSameOrigin: (origin: string | null, host: string | null) => boolean;
   /** The verified session's user id, or null. */
   getUserId: () => Promise<string | null>;
   hash: (text: string) => string;
   cacheGet: (hash: string) => Promise<string | null>;
-  /** Insert that ignores a row that already exists (two requests for the same combo at once). */
+  /** Insert that ignores a row that already exists (two requests for the same combo at once). `model` is the one that wrote the text. */
   cachePut: (hash: string, model: string, text: string) => Promise<void>;
   /** True when the call was counted (both daily limits allow it). */
   consume: (userId: string, day: string) => Promise<boolean>;
   /** Gives one counted call back (a failure that is not the user's). */
   refund: (userId: string, day: string) => Promise<void>;
-  /** `single`: ask the first model alone (no `models` list). `timeoutMs`: how long this call may take. */
+  /** One request to one model. `timeoutMs` is how long it may take. */
   call: (
     input: ExplainInput,
-    model: string,
-    opts?: { single?: boolean; timeoutMs?: number },
+    attempt: {
+      model: string;
+      extra?: ModelAttempt['extra'];
+      timeoutMs: number;
+    },
   ) => Promise<CallResult>;
-  /** Whether a request lists more than one model, so that a request refused with a 400 can be asked again alone. */
-  hasFallbackModels: boolean;
-  /** One log line per fallback, retry and retried success (the route passes console.warn). */
+  /** One log line per fallback, failed try that was followed by another, and success after several tries (console.warn). */
   log: (line: string) => void;
 };
 
@@ -39,9 +45,6 @@ const clean = (v: string | number) =>
   String(v)
     .replace(/[^\w.\-/:+가-힣]/g, '_')
     .slice(0, 60);
-
-/** How the answer was asked for, when it was not the plain first request. */
-type Via = 'single_retry';
 
 type Why = {
   reason: FallbackReason;
@@ -56,15 +59,21 @@ type Why = {
   ms?: number;
   /** Whether the counted call was given back: yes, or no because giving back failed. */
   refund?: 'yes' | 'failed';
-  via?: Via;
+  /** The number of tries, when there was more than one. */
+  attempts?: number;
+  /** Which try this line is about, and the model it asked. */
+  tried?: number;
+  asked?: string;
 } & Refusal;
 
 /** A message of OpenRouter: already made safe where it was read; here it is cut and quoted again. */
 const cleanMsg = (v: string) =>
   `"${v.replace(/[^A-Za-z0-9 .,:/()…-]/g, '_').slice(0, 120)}"`;
 
-function line(kind: 'fallback' | 'retry' | 'ok', w: Partial<Why>): string {
+function line(kind: 'fallback' | 'attempt' | 'ok', w: Partial<Why>): string {
   const parts: [string, string | number | undefined][] = [
+    ['try', w.tried],
+    ['asked', w.asked],
     ['reason', w.reason],
     ['cause', w.cause],
     ['detail', w.detail],
@@ -83,7 +92,7 @@ function line(kind: 'fallback' | 'retry' | 'ok', w: Partial<Why>): string {
     ['retry_after', w.retryAfter],
     ['ms', w.ms],
     ['refund', w.refund],
-    ['via', w.via],
+    ['attempts', w.attempts],
   ];
   return (
     `[explain] ${kind} ` +
@@ -110,6 +119,91 @@ const error = (status: number, code: string): HandlerResult => ({
   status,
   body: { error: code },
 });
+
+type Outcome =
+  | { ok: true; text: string }
+  | {
+      ok: false;
+      why: Why;
+      /** The AI side failed before it gave an answer: the counted call is given back (if every try was like this). */
+      refundable: boolean;
+      /** An answer came but our checks refused it: the same model may be asked once more. */
+      refused: boolean;
+    };
+
+/** What one model's call came to: a text we may show, or why not. */
+function judge(res: CallResult, input: ExplainInput): Outcome {
+  const seen = {
+    model: res.model,
+    finish: res.finish,
+    tokens: res.tokens,
+    reasoningTokens: res.reasoningTokens,
+  };
+  // An answer cut off by the token limit is never shown, even when the part that arrived looks fine, and an
+  // empty one that was cut off (reasoning used the whole budget) is reported as cut off, not as a bad response.
+  if (res.finish === 'length')
+    return {
+      ok: false,
+      refundable: false,
+      refused: false,
+      why: {
+        reason: 'INVALID',
+        cause: 'TRUNCATED',
+        detail: res.ok ? undefined : res.detail,
+        ...seen,
+      },
+    };
+  if (!res.ok) {
+    const busy = res.reason === 'RATE_LIMIT' || res.reason === 'TIMEOUT';
+    return {
+      ok: false,
+      refundable: REFUNDED.has(res.reason),
+      refused: false,
+      why: {
+        reason: busy ? 'BUSY' : 'UNAVAILABLE',
+        cause: res.reason,
+        detail: res.detail,
+        status: res.status,
+        scope: res.scope,
+        provider: res.provider,
+        providerCode: res.providerCode,
+        rlLimit: res.rlLimit,
+        rlRemaining: res.rlRemaining,
+        rlResetIn: res.rlResetIn,
+        retryAfter: res.retryAfter,
+        message: res.message,
+        ...seen,
+      },
+    };
+  }
+  const found = extractExplanation(res.content, input);
+  if (!found.ok)
+    return {
+      ok: false,
+      refundable: false,
+      refused: true,
+      why: {
+        reason: 'INVALID',
+        cause: found.reason,
+        detail: found.detail,
+        ...seen,
+      },
+    };
+  const checked = checkExplanation(found.text, input);
+  if (!checked.ok)
+    return {
+      ok: false,
+      refundable: false,
+      refused: true,
+      why: {
+        reason: 'INVALID',
+        cause: checked.reason,
+        detail: checked.detail,
+        ...seen,
+      },
+    };
+  return { ok: true, text: found.text };
+}
 
 export async function handleExplain(
   deps: ExplainDeps,
@@ -156,112 +250,86 @@ export async function handleExplain(
   }
   if (!allowed) return fallback({ reason: 'LIMIT', cause: 'LIMIT' });
 
+  // The tries. Each model is asked alone, with its own extra fields and its own time (never more than is left
+  // of the server's total). A model whose answer our checks refused is asked once more when twice its last
+  // duration is left; any other failure goes straight on to the next model.
   const startedAt = deps.now().getTime();
-  let res = await deps.call(input, deps.model);
-  let via: Via | undefined;
-  // A request that lists several models and was refused with a 400 (a bad `models` list, or one model id it does
-  // not take) is asked again with the first model alone, in the time that is left. The 400 is logged first, so
-  // the log still shows what was wrong when the second request works.
-  if (
-    deps.hasFallbackModels &&
-    !res.ok &&
-    res.reason === 'HTTP' &&
-    res.status === 400
-  ) {
-    const left =
-      EXPLAIN_LIMITS.serverTimeoutMs - (deps.now().getTime() - startedAt);
-    deps.log(
-      line('retry', {
-        reason: 'UNAVAILABLE',
-        cause: 'HTTP',
-        status: res.status,
-        message: res.message,
-        ms: deps.now().getTime() - startedAt,
-        via: 'single_retry',
-      }),
-    );
-    if (left >= EXPLAIN_LIMITS.minRetryMs) {
-      res = await deps.call(input, deps.model, {
-        single: true,
-        timeoutMs: left,
+  const elapsed = () => deps.now().getTime() - startedAt;
+  const failures: { why: Why; tried: number; asked: string; took: number }[] =
+    [];
+  let tried = 0;
+  let everyFailureRefundable = true;
+  for (const a of deps.attempts) {
+    let repeated = false;
+    for (;;) {
+      const left = EXPLAIN_LIMITS.serverTotalMs - elapsed();
+      if (left < a.minMs) break;
+      tried++;
+      const t0 = deps.now().getTime();
+      const res = await deps.call(input, {
+        model: a.model,
+        extra: a.extra,
+        timeoutMs: Math.min(a.timeoutMs, left),
       });
-      via = 'single_retry';
+      const took = deps.now().getTime() - t0;
+      const out = judge(res, input);
+      if (out.ok) {
+        for (const f of failures)
+          deps.log(
+            line('attempt', {
+              ...f.why,
+              tried: f.tried,
+              asked: f.asked,
+              ms: f.took,
+            }),
+          );
+        if (tried > 1)
+          deps.log(
+            line('ok', {
+              tried,
+              asked: a.model,
+              model: res.model,
+              finish: res.finish,
+              tokens: res.tokens,
+              ms: elapsed(),
+            }),
+          );
+        await deps
+          .cachePut(hash, res.model ?? a.model, out.text)
+          .catch(() => {});
+        return { status: 200, body: { text: out.text, source: 'ai' } };
+      }
+      failures.push({ why: out.why, tried, asked: a.model, took });
+      if (!out.refundable) everyFailureRefundable = false;
+      const repeatable =
+        out.refused &&
+        !repeated &&
+        EXPLAIN_LIMITS.serverTotalMs - elapsed() >=
+          Math.max(a.minMs, took * EXPLAIN_LIMITS.repeatFactor);
+      if (!repeatable) break;
+      repeated = true;
     }
   }
-  const ms = deps.now().getTime() - startedAt;
-  const seen = {
-    model: res.model,
-    finish: res.finish,
-    tokens: res.tokens,
-    reasoningTokens: res.reasoningTokens,
-    ms,
-    via,
-  };
-  // An answer cut off by the token limit is never shown, even when the part that arrived looks fine, and an
-  // empty one that was cut off (reasoning used the whole budget) is reported as cut off, not as a bad response.
-  if (res.finish === 'length')
-    return fallback({
-      reason: 'INVALID',
-      cause: 'TRUNCATED',
-      detail: res.ok ? undefined : res.detail,
-      ...seen,
-    });
-  if (!res.ok) {
-    // Not the user's doing (the AI side said no, was slow or unreachable, or no key): give the count back.
-    // An answer that came but was refused by our checks (below) stays counted: the AI side did the work.
-    let refund: Why['refund'];
-    if (REFUNDED.has(res.reason)) {
-      refund = await deps.refund(userId, day).then(
-        () => 'yes' as const,
-        () => 'failed' as const,
-      );
-    }
-    const busy = res.reason === 'RATE_LIMIT' || res.reason === 'TIMEOUT';
-    return fallback({
-      reason: busy ? 'BUSY' : 'UNAVAILABLE',
-      cause: res.reason,
-      detail: res.detail,
-      status: res.status,
-      scope: res.scope,
-      provider: res.provider,
-      providerCode: res.providerCode,
-      rlLimit: res.rlLimit,
-      rlRemaining: res.rlRemaining,
-      rlResetIn: res.rlResetIn,
-      retryAfter: res.retryAfter,
-      message: res.message,
-      refund,
-      ...seen,
-    });
-  }
-  const found = extractExplanation(res.content, input);
-  if (!found.ok)
-    return fallback({
-      reason: 'INVALID',
-      cause: found.reason,
-      detail: found.detail,
-      ...seen,
-    });
-  const checked = checkExplanation(found.text, input);
-  if (!checked.ok)
-    return fallback({
-      reason: 'INVALID',
-      cause: checked.reason,
-      detail: checked.detail,
-      ...seen,
-    });
-  const text = found.text;
-  if (via)
-    deps.log(
-      line('ok', {
-        model: res.model,
-        finish: res.finish,
-        tokens: res.tokens,
-        ms,
-        via,
-      }),
-    );
 
-  await deps.cachePut(hash, deps.model, text).catch(() => {});
-  return { status: 200, body: { text, source: 'ai' } };
+  // Nothing worked. Earlier failed tries are logged as such, the last one becomes the fallback line.
+  const last = failures.pop();
+  for (const f of failures)
+    deps.log(
+      line('attempt', { ...f.why, tried: f.tried, asked: f.asked, ms: f.took }),
+    );
+  if (!last)
+    return fallback({ reason: 'UNAVAILABLE', cause: 'NO_TIME', ms: elapsed() });
+  // Given back only when no try got as far as an answer: the AI side did no work for it.
+  let refund: Why['refund'];
+  if (everyFailureRefundable)
+    refund = await deps.refund(userId, day).then(
+      () => 'yes' as const,
+      () => 'failed' as const,
+    );
+  return fallback({
+    ...last.why,
+    ms: elapsed(),
+    refund,
+    attempts: tried > 1 ? tried : undefined,
+  });
 }
