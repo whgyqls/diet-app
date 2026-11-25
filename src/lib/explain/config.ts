@@ -7,14 +7,31 @@
  * (openrouter/free) may pick a reasoning model that spends the token budget thinking and returns no text.
  */
 export const DEFAULT_MODEL = 'google/gemma-4-26b-a4b-it:free';
-/** Tried in this order when the first model errors (rate limit, provider down). Only free models: a paid one would be billed. */
+/**
+ * Tried in this order when the first model errors (rate limit, provider down). Only free models: a paid one would
+ * be billed. The second one is from another provider (Nvidia), because both Gemma models are served by Google.
+ */
 export const FALLBACK_MODELS: readonly string[] = [
   'google/gemma-4-31b-it:free',
-  // Other providers, because the Google one (both Gemma models) can be the one rate limiting:
-  // Nvidia, then AtlasCloud. dots-3-note-preview is listed with an expiry date of 2026-12-31.
   'nvidia/nemotron-3.5-super-vl:free',
-  'dots-studio/dots-3-note-preview:free',
 ];
+/**
+ * The most models one request may list (the `models` array). The OpenRouter docs state no limit for chat
+ * completions; 3 is a cautious value: a 4-model request was answered with a 400 in 0.1 s (2026-11-25), and the
+ * documented limit of the Anthropic-style `fallbacks` parameter is 3. DEFAULT_MODEL + FALLBACK_MODELS must fit.
+ */
+export const MAX_MODELS_PER_REQUEST = 3;
+
+/** The models of one request, in order: the first model, then the fallbacks, without repeats, at most the limit. */
+export function modelsForRequest(
+  model: string,
+  fallbacks: readonly string[],
+): string[] {
+  return [...new Set([model, ...fallbacks].filter(Boolean))].slice(
+    0,
+    MAX_MODELS_PER_REQUEST,
+  );
+}
 export const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 /** Shown to OpenRouter as the app name. Nothing about the user. */
 export const APP_TITLE = 'wonmul-diet';
@@ -28,6 +45,8 @@ export const EXPLAIN_LIMITS = {
   /** Calls for the whole site per UTC day. The free quota is 50 a day, so keep a margin. */
   sitePerDay: 45,
   serverTimeoutMs: 8_000,
+  /** A retry after a 400 is made only when at least this much of the server wait is left. */
+  minRetryMs: 1_500,
   /** Longer than the server's whole run (8 s for the AI call + login, cache and count steps + a cold start). */
   clientTimeoutMs: 15_000,
   maxBodyBytes: 8_192,

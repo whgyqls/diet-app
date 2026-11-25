@@ -34,7 +34,7 @@
 - 로그인 방식: **이메일 매직링크 + Google**. 카카오 로그인은 v2.
 - 식재료 데이터: v1은 **코드 저장소의 JSON 파일**(`data/foods.json`, `data/seasonings.json`). DB 관리 화면은 v2.
 - 영양값 출처: 식품의약품안전처 **식품영양성분 데이터베이스** 기준으로 검증. 초안 수치는 근사치이므로 Phase 1에서 대조 후 확정.
-- AI 모델: **OpenRouter의 고정 무료 모델 `google/gemma-4-26b-a4b-it:free`(추론 기본 꺼짐, 2026-11-24 결정)**. 에러(제공자 한도·장애)면 `gemma-4-31b-it:free` → `nvidia/nemotron-3.5-super-vl:free` → `dots-studio/dots-3-note-preview:free`(2026-12-31 만료 예정) 순서로 넘어간다. `openrouter/free`는 추론 모델을 골라 본문이 비는 일이 있어 쓰지 않는다. 모델 이름은 `src/lib/explain/config.ts`(`DEFAULT_MODEL`, `FALLBACK_MODELS`)에만 적는다. 짧은 응답, 같은 조합은 DB에 캐시해서 재호출하지 않음.
+- AI 모델: **OpenRouter의 고정 무료 모델 `google/gemma-4-26b-a4b-it:free`(추론 기본 꺼짐, 2026-11-24 결정)**. 에러(제공자 한도·장애)면 `gemma-4-31b-it:free` → `nvidia/nemotron-3.5-super-vl:free` 순서로 넘어간다. 한 요청의 모델 목록은 `MAX_MODELS_PER_REQUEST`(3개, 공식 문서에 명시된 값이 아니라 4개 목록이 400으로 거절된 관찰에 따른 보수적 값) 이하여야 하고, 목록 요청이 400이면 첫 모델 하나만 담아 한 번 더 호출한다. `openrouter/free`는 추론 모델을 골라 본문이 비는 일이 있어 쓰지 않는다. 모델 이름은 `src/lib/explain/config.ts`(`DEFAULT_MODEL`, `FALLBACK_MODELS`)에만 적는다. 짧은 응답, 같은 조합은 DB에 캐시해서 재호출하지 않음.
 
 ---
 
@@ -335,7 +335,7 @@ type Seasoning = {
 - 한도: 사용자별 하루 5회, 사이트 전체 하루 45회(UTC 날짜 기준, 캐시 적중은 세지 않음). OpenRouter 무료 모델 쪽 한도는 하루 50회(누적 구매 크레딧이 10크레딧 이상이면 1000회), 분당 20회다. 모델 제공자(예: Google AI Studio)의 자체 무료 한도로도 429가 날 수 있다(2026-11-24 실제로 확인)
 - 위 숫자(220자, 8초, 15초, 5회, 45회)의 **실제 값은 `src/lib/explain/config.ts`가 기준**이다. 값이 다르면 코드가 맞고 이 문서를 고친다
 - 실패(한도 초과·429·타임아웃·검증 탈락·DB 오류)하면 같은 입력으로 만든 AI 없는 **기본 문장**을 보여주고 "AI 설명" 표시는 붙이지 않는다. 나머지 화면은 정상 동작. 안내 문구는 원인별로 다르다: 우리 하루 한도는 "오늘은 AI 설명을 더 쓸 수 없어서 기본 설명을 보여드려요.", 상류 429·타임아웃·브라우저 15초 초과는 "지금은 AI가 바빠서 기본 설명을 보여드려요. 잠시 뒤에 다시 눌러 주세요.", 그 밖의 실패는 "AI 설명을 가져오지 못해 기본 설명을 보여드려요."
-- 개인정보: `/privacy`에 전달 내용, 모델 제공자 후보(Google, NVIDIA, AtlasCloud)와 제공자의 보관·학습 가능성을 적는다. 사용 기록(`ai_usage`)은 계정 삭제 시 함께 지워진다(`ACCOUNT_DATA_TEXT`)
+- 개인정보: `/privacy`에 전달 내용, 모델 제공자 후보(Google, NVIDIA)와 제공자의 보관·학습 가능성을 적는다. 사용 기록(`ai_usage`)은 계정 삭제 시 함께 지워진다(`ACCOUNT_DATA_TEXT`)
 
 ---
 

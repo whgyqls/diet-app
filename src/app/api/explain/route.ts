@@ -6,6 +6,7 @@ import { isSameOrigin } from '@/lib/account/deleteRequest';
 import {
   EXPLAIN_LIMITS,
   FALLBACK_MODELS,
+  modelsForRequest,
   pickModel,
 } from '@/lib/explain/config';
 import { handleExplain, type ExplainDeps } from '@/lib/explain/handler';
@@ -60,12 +61,14 @@ export async function POST(request: NextRequest) {
       if (error) throw new Error('refund_failed');
     },
     log: (line) => console.warn(line),
-    call: (input, m) =>
+    hasFallbackModels: modelsForRequest(model, FALLBACK_MODELS).length > 1,
+    call: (input, m, opts) =>
       callOpenRouter({
         apiKey: process.env.OPENROUTER_API_KEY,
         model: m,
-        fallbacks: FALLBACK_MODELS,
+        fallbacks: opts?.single ? [] : FALLBACK_MODELS,
         input,
+        timeoutMs: opts?.timeoutMs,
       }),
   };
   const { status, body } = await handleExplain(deps, {

@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { callOpenRouter } from './openrouter';
+import { callOpenRouter, safeMessage } from './openrouter';
 import {
   DEFAULT_MODEL,
   EXPLAIN_LIMITS,
   FALLBACK_MODELS,
+  MAX_MODELS_PER_REQUEST,
+  modelsForRequest,
   pickModel,
   utcDay,
 } from './config';
@@ -590,7 +592,6 @@ describe('callOpenRouter: models to try', () => {
     expect(FALLBACK_MODELS).toEqual([
       'google/gemma-4-31b-it:free',
       'nvidia/nemotron-3.5-super-vl:free',
-      'dots-studio/dots-3-note-preview:free',
     ]);
     for (const m of [DEFAULT_MODEL, ...FALLBACK_MODELS])
       expect(m.endsWith(':free')).toBe(true);
@@ -682,6 +683,116 @@ describe('callOpenRouter: who refused a 429 (names and numbers only)', () => {
       status: 502,
       provider: 'Nvidia',
       providerCode: 'overloaded',
+    });
+  });
+});
+
+describe('the models of one request stay within the limit', () => {
+  it('DEFAULT_MODEL and FALLBACK_MODELS together fit the limit, are free, and are not repeated', () => {
+    const all = [DEFAULT_MODEL, ...FALLBACK_MODELS];
+    expect(MAX_MODELS_PER_REQUEST).toBe(3);
+    expect(all.length).toBeLessThanOrEqual(MAX_MODELS_PER_REQUEST);
+    expect(new Set(all).size).toBe(all.length);
+    for (const m of all) expect(m).toMatch(/^[a-z0-9._-]+\/[a-z0-9._-]+:free$/);
+    expect(modelsForRequest(DEFAULT_MODEL, FALLBACK_MODELS)).toEqual(all);
+  });
+  it('modelsForRequest never returns more than the limit, drops repeats and blanks, keeps the order', () => {
+    expect(modelsForRequest('a/1', ['a/2', 'a/3', 'a/4', 'a/5'])).toEqual([
+      'a/1',
+      'a/2',
+      'a/3',
+    ]);
+    expect(modelsForRequest('a/1', ['a/1', '', 'a/2'])).toEqual(['a/1', 'a/2']);
+    expect(modelsForRequest('a/1', [])).toEqual(['a/1']);
+    // an OPENROUTER_MODEL override cannot push the list over the limit either
+    expect(modelsForRequest('x/override', FALLBACK_MODELS)).toHaveLength(3);
+  });
+  it('the request body lists at most the limit, even when more fallbacks are given', async () => {
+    const f = vi.fn(async () => new Response('{}', { status: 200 }));
+    await callOpenRouter({
+      apiKey: 'k',
+      model: 'a/1',
+      fallbacks: ['a/2', 'a/3', 'a/4', 'a/5', 'a/6'],
+      input,
+      fetchImpl: f as unknown as typeof fetch,
+    });
+    const body = JSON.parse(
+      (f.mock.calls[0] as unknown as [string, RequestInit])[1].body as string,
+    );
+    expect(body.models).toEqual(['a/1', 'a/2', 'a/3']);
+    expect(body.models.length).toBeLessThanOrEqual(MAX_MODELS_PER_REQUEST);
+  });
+});
+
+describe('safeMessage and the message of a failed request', () => {
+  // built from pieces: the source file must not hold anything shaped like a real key
+  const fakeKey = ['sk', 'or', 'v1', 'x'.repeat(40)].join('-');
+  it('keeps a short plain message, hides key-like tokens and odd characters, cuts at 120', () => {
+    expect(safeMessage('models array must have at most 3 items')).toBe(
+      'models array must have at most 3 items',
+    );
+    expect(safeMessage(`Invalid key ${fakeKey}`)).toBe('Invalid key …');
+    const odd = safeMessage('bad {"a":1}\n<b>닭가슴살</b>')!;
+    // braces, quotes, angle brackets and Korean text become "_"; only plain characters are left
+    expect(odd).toMatch(/^[A-Za-z0-9 .,:/()…_-]+$/);
+    expect(odd).not.toMatch(/[{}"<>닭가슴살]/);
+    expect(odd.startsWith('bad ')).toBe(true);
+    expect(safeMessage('x'.repeat(300))).toBe('…');
+    expect(safeMessage('word '.repeat(60))!.length).toBeLessThanOrEqual(120);
+    expect(safeMessage('')).toBeUndefined();
+    expect(safeMessage('   ')).toBeUndefined();
+    expect(safeMessage(42)).toBeUndefined();
+    expect(safeMessage(undefined)).toBeUndefined();
+  });
+  it('a model id in a message stays readable (its parts are short)', () => {
+    expect(safeMessage('unknown model google/gemma-4-31b-it:free')).toBe(
+      'unknown model google/gemma-4-31b-it:free',
+    );
+  });
+  const refuse = (
+    status: number,
+    body: unknown,
+    headers: Record<string, string> = {},
+  ) =>
+    callOpenRouter({
+      apiKey: 'k',
+      model: 'm/x',
+      input,
+      fetchImpl: (async () =>
+        new Response(typeof body === 'string' ? body : JSON.stringify(body), {
+          status,
+          headers,
+        })) as unknown as typeof fetch,
+    });
+  it('a 400 gives its message and code-free result; the raw payload and the rest of the body are not read', async () => {
+    const r = await refuse(400, {
+      error: {
+        code: 400,
+        message: 'models: too many items (max 3)',
+        metadata: {
+          raw: '제공자 원문 zxcvb',
+          provider_name: 'Google AI Studio',
+        },
+      },
+      user_id: 'user-secret-123',
+    });
+    expect(r).toEqual({
+      ok: false,
+      reason: 'HTTP',
+      status: 400,
+      message: 'models: too many items (max 3)',
+      provider: 'Google AI Studio',
+    });
+    expect(JSON.stringify(r)).not.toMatch(/zxcvb|user-secret/);
+  });
+  it('a 429 does not carry the message, and a body that is not JSON gives none', async () => {
+    expect(
+      await refuse(429, { error: { message: 'Rate limit exceeded' } }),
+    ).not.toHaveProperty('message');
+    expect(await refuse(400, 'Bad Request')).toEqual({
+      ok: false,
+      reason: 'HTTP',
+      status: 400,
     });
   });
 });

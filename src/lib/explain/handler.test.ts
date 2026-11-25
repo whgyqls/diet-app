@@ -40,6 +40,7 @@ function deps(over: Partial<ExplainDeps> = {}) {
     consume: vi.fn(async () => true),
     call: vi.fn(async () => ({ ok: true as const, content: GOOD })),
     refund: vi.fn(async () => {}),
+    hasFallbackModels: true,
     log: vi.fn(),
     ...over,
   };
@@ -391,5 +392,155 @@ describe('handleExplain', () => {
     expect((d.log as ReturnType<typeof vi.fn>).mock.calls[0][0]).toBe(
       '[explain] fallback reason=BUSY cause=RATE_LIMIT scope=provider provider=Google_AI_Studio provider_code=429 rl_limit=50 rl_remaining=0 rl_reset_in=31200 retry_after=60 ms=0 refund=yes',
     );
+  });
+
+  describe('a 400 on a request that lists several models', () => {
+    const bad400 = {
+      ok: false as const,
+      reason: 'HTTP' as const,
+      status: 400,
+      message: 'models: too many items (max 3)',
+    };
+    const good = {
+      ok: true as const,
+      content: GOOD,
+      model: 'google/gemma-4-26b-a4b-it:free',
+      finish: 'stop',
+      tokens: 40,
+    };
+    const lines = (d: ExplainDeps) =>
+      (d.log as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0] as string);
+
+    it('asks again with the first model alone, shows that answer, and logs the 400 and the success with via=single_retry', async () => {
+      const call = vi.fn(
+        async (
+          _i: unknown,
+          _m: string,
+          opts?: { single?: boolean; timeoutMs?: number },
+        ) => (opts?.single ? good : bad400),
+      );
+      const d = deps({ call: call as unknown as ExplainDeps['call'] });
+      const r = await send(d);
+      expect(r.body).toMatchObject({ source: 'ai' });
+      expect(call).toHaveBeenCalledTimes(2);
+      expect(call.mock.calls[0][2]).toBeUndefined();
+      expect(call.mock.calls[1][2]).toMatchObject({ single: true });
+      expect(d.cachePut).toHaveBeenCalledTimes(1);
+      expect(d.refund).not.toHaveBeenCalled();
+      expect(lines(d)).toEqual([
+        '[explain] retry reason=UNAVAILABLE cause=HTTP status=400 msg="models: too many items (max 3)" ms=0 via=single_retry',
+        '[explain] ok model=google/gemma-4-26b-a4b-it:free finish=stop tokens=40 ms=0 via=single_retry',
+      ]);
+    });
+
+    it('gives the second request only the time that is left of the server wait', async () => {
+      let t = 0;
+      const call = vi.fn(
+        async (
+          _i: unknown,
+          _m: string,
+          opts?: { single?: boolean; timeoutMs?: number },
+        ) => {
+          t += opts?.single ? 300 : 1000; // the first request took 1 s
+          return opts?.single ? good : bad400;
+        },
+      );
+      const d = deps({
+        now: () => new Date(1_700_000_000_000 + t),
+        call: call as unknown as ExplainDeps['call'],
+      });
+      await send(d);
+      expect(call.mock.calls[1][2]!.timeoutMs).toBe(7000);
+    });
+
+    it('does not ask again when too little time is left', async () => {
+      let t = 0;
+      const call = vi.fn(async () => {
+        t += 7000; // 1 s left, below the minimum
+        return bad400;
+      });
+      const d = deps({
+        now: () => new Date(1_700_000_000_000 + t),
+        call: call as unknown as ExplainDeps['call'],
+      });
+      const r = await send(d);
+      expect(call).toHaveBeenCalledTimes(1);
+      expect(r.body).toMatchObject({
+        source: 'fallback',
+        reason: 'UNAVAILABLE',
+      });
+    });
+
+    it('when the second request fails too, the fallback line says via=single_retry, and the call is given back', async () => {
+      const call = vi.fn(
+        async (_i: unknown, _m: string, opts?: { single?: boolean }) =>
+          opts?.single
+            ? {
+                ok: false as const,
+                reason: 'RATE_LIMIT' as const,
+                scope: 'provider' as const,
+              }
+            : bad400,
+      );
+      const d = deps({ call: call as unknown as ExplainDeps['call'] });
+      const r = await send(d);
+      expect(r.body).toMatchObject({ source: 'fallback', reason: 'BUSY' });
+      expect(d.refund).toHaveBeenCalledTimes(1);
+      expect(lines(d)[1]).toBe(
+        '[explain] fallback reason=BUSY cause=RATE_LIMIT scope=provider ms=0 refund=yes via=single_retry',
+      );
+    });
+
+    it('a second 400 is reported with its message and the call is given back', async () => {
+      const d = deps({ call: async () => bad400 });
+      await send(d);
+      expect(lines(d)).toHaveLength(2);
+      expect(lines(d)[1]).toBe(
+        '[explain] fallback reason=UNAVAILABLE cause=HTTP status=400 msg="models: too many items (max 3)" ms=0 refund=yes via=single_retry',
+      );
+      expect(d.refund).toHaveBeenCalledTimes(1);
+    });
+
+    it('is not retried for any other status, nor when the request listed only one model', async () => {
+      for (const status of [401, 402, 403, 404, 500, 502]) {
+        const call = vi.fn(async () => ({
+          ok: false as const,
+          reason: 'HTTP' as const,
+          status,
+        }));
+        await send(deps({ call: call as unknown as ExplainDeps['call'] }));
+        expect(call, String(status)).toHaveBeenCalledTimes(1);
+      }
+      const call = vi.fn(async () => bad400);
+      await send(
+        deps({
+          hasFallbackModels: false,
+          call: call as unknown as ExplainDeps['call'],
+        }),
+      );
+      expect(call).toHaveBeenCalledTimes(1);
+    });
+
+    it('a request that went fine is never asked twice and logs nothing', async () => {
+      const call = vi.fn(async () => good);
+      const d = deps({ call: call as unknown as ExplainDeps['call'] });
+      await send(d);
+      expect(call).toHaveBeenCalledTimes(1);
+      expect(d.log).not.toHaveBeenCalled();
+    });
+
+    it('the message in the log has no body, key or user data, and the response to the browser carries none of it', async () => {
+      const d = deps({
+        call: async () => ({
+          ok: false as const,
+          reason: 'HTTP' as const,
+          status: 400,
+          message: 'bad "quote" {x} user-1 Bearer abc',
+        }),
+      });
+      const r = await send(d);
+      expect(JSON.stringify(r.body)).not.toContain('quote');
+      expect(lines(d)[0]).toContain('msg="bad _quote_ _x_ user-1 Bearer abc"');
+    });
   });
 });

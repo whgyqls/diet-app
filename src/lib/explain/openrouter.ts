@@ -1,6 +1,11 @@
 // One chat completions call to OpenRouter (OpenAI compatible), with fetch. Server side only: the caller passes
 // the key in. Never throws; a failure comes back as a reason.
-import { APP_TITLE, EXPLAIN_LIMITS, OPENROUTER_URL } from './config';
+import {
+  APP_TITLE,
+  EXPLAIN_LIMITS,
+  OPENROUTER_URL,
+  modelsForRequest,
+} from './config';
 import { SYSTEM_PROMPT, userPrompt } from './prompt';
 import type { ExplainInput } from './types';
 
@@ -48,7 +53,24 @@ export type Refusal = {
   rlResetIn?: number;
   /** Seconds, from the Retry-After header. */
   retryAfter?: number;
+  /** OpenRouter's own message of a failed request (not a 429), made safe by safeMessage. */
+  message?: string;
 };
+
+/**
+ * OpenRouter's error message, short and safe for a log line: only plain characters, anything that looks like a
+ * key or token (24+ letters, digits, _ or -) hidden, at most 120 characters. The raw payload is never read.
+ */
+export function safeMessage(raw: unknown): string | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const text = raw
+    .replace(/[A-Za-z0-9_-]{24,}/g, '…')
+    .replace(/[^A-Za-z0-9 .,:/()…-]/g, '_')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120);
+  return text === '' ? undefined : text;
+}
 
 const header = (res: Response, name: string): number | undefined => {
   const n = Number(res.headers.get(name));
@@ -62,11 +84,14 @@ async function readRefusal(
   now: () => number = Date.now,
 ): Promise<Refusal> {
   let meta: Record<string, unknown> | undefined;
+  let message: string | undefined;
   try {
     const body = (await res.json()) as {
-      error?: { metadata?: Record<string, unknown> };
+      error?: { message?: unknown; metadata?: Record<string, unknown> };
     } | null;
     meta = body?.error?.metadata;
+    // The message of a 429 says nothing more than the headers do; the others (400...) say what was wrong.
+    if (!rateLimited) message = safeMessage(body?.error?.message);
   } catch {
     // not JSON: the headers still tell something
   }
@@ -98,6 +123,7 @@ async function readRefusal(
         ? undefined
         : Math.max(0, Math.round((reset - now()) / 1000)),
     retryAfter: header(res, 'retry-after'),
+    message,
   });
 }
 
@@ -120,9 +146,7 @@ export async function callOpenRouter(args: {
   const { apiKey, model, input } = args;
   if (!apiKey) return { ok: false, reason: 'NO_KEY' };
   const doFetch = args.fetchImpl ?? fetch;
-  const models = [
-    ...new Set([model, ...(args.fallbacks ?? [])].filter(Boolean)),
-  ];
+  const models = modelsForRequest(model, args.fallbacks ?? []);
   try {
     const res = await doFetch(OPENROUTER_URL, {
       method: 'POST',
