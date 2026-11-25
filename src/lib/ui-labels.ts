@@ -164,16 +164,28 @@ export const includeMissingText = (names: string[]) =>
 export const includeDroppedText = (
   items: {
     name: string;
-    reason: 'NOT_SELECTED' | 'STYLE_EXCLUDED' | 'UNKNOWN';
+    reason: 'NOT_SELECTED' | 'STYLE_EXCLUDED' | 'UNKNOWN' | 'OIL' | 'CAP';
   }[],
 ) =>
-  items
-    .map((i) =>
-      i.reason === 'STYLE_EXCLUDED'
-        ? `${i.name}은(는) 선택한 스타일에서 제외돼서 꼭 넣을 재료에서 뺐어요.`
-        : `${i.name}을(를) 선택에서 뺐어서 꼭 넣을 재료에서도 뺐어요.`,
-    )
-    .join(' ');
+  [
+    ...new Set(
+      items.map((i) => {
+        switch (i.reason) {
+          case 'STYLE_EXCLUDED':
+            return `${i.name}은(는) 선택한 스타일에서 제외돼서 꼭 넣을 재료에서 뺐어요.`;
+          case 'CAP':
+            return `${i.name}은(는) 하루 끼니 수 기준 상한 때문에 뺐어요.`;
+          // These two say the same whichever food it was, so they are said once.
+          case 'OIL':
+            return '기름은 꼭 넣을 재료로 고를 수 없어서 뺐어요.';
+          case 'UNKNOWN':
+            return '찾을 수 없는 재료는 뺐어요.';
+          default:
+            return `${i.name}을(를) 선택에서 뺐어서 꼭 넣을 재료에서도 뺐어요.`;
+        }
+      }),
+    ),
+  ].join(' ');
 
 // ---- Plan screen: AI explanation (Phase 6) ----
 export const AI_TEXT = {
@@ -212,4 +224,11 @@ export const DAY_PLAN_TEXT = {
   confirmYes: '삭제',
   cancel: '취소',
   deleteFailed: '삭제하지 못했어요. 잠시 뒤에 다시 시도해 주세요.',
+  // "다시 추천받기": the foods of a saved day become the "must include" foods of a new recommendation
+  includeButton: '이 재료로 다시 추천받기',
+  includeNote:
+    '같은 식단이 아니라 그 재료를 넣은 새 추천이라 분량과 조합이 달라질 수 있어요.',
+  includeConfirm: '꼭 넣을 재료를 이 날짜의 재료로 바꿀까요?',
+  includeConfirmYes: '바꾸기',
+  needProfile: '프로필을 먼저 입력하면 쓸 수 있어요.',
 } as const;

@@ -36,7 +36,12 @@ export function canAddInclude(
   return used < includeCapacity(mealsPerDay)[food.category];
 }
 
-export type DropReason = 'NOT_SELECTED' | 'STYLE_EXCLUDED' | 'UNKNOWN';
+/**
+ * Why a food is not (or no longer) in the "must include" list: not selected any more, left out by a style, not in
+ * the data, an oil (never counted as part of a combo), or over the per-meal limit of its category.
+ */
+export type DropReason =
+  'NOT_SELECTED' | 'STYLE_EXCLUDED' | 'UNKNOWN' | 'OIL' | 'CAP';
 
 /** Keeps the ids the engine can still use; the rest are dropped with the reason. Order is kept, duplicates removed. */
 export function effectiveIncludes(
@@ -49,7 +54,8 @@ export function effectiveIncludes(
   const dropped: { id: string; reason: DropReason }[] = [];
   for (const id of new Set(ids)) {
     const f = foods.find((x) => x.id === id);
-    if (!f || !isIncludable(f)) dropped.push({ id, reason: 'UNKNOWN' });
+    if (!f) dropped.push({ id, reason: 'UNKNOWN' });
+    else if (!isIncludable(f)) dropped.push({ id, reason: 'OIL' });
     else if (!selection.foods[id]) dropped.push({ id, reason: 'NOT_SELECTED' });
     else if (isExcluded(f)) dropped.push({ id, reason: 'STYLE_EXCLUDED' });
     else kept.push(id);

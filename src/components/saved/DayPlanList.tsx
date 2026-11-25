@@ -1,7 +1,13 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { FOODS } from '@/lib/data/load';
+import { isFoodExcludedByStyles } from '@/lib/nutrition/styleExclusion';
 import { dateLabel, type SavedDayPlan } from '@/lib/plan/dayPlans';
+import { includeFromDayPlan } from '@/lib/plan/dayPlanInclude';
+import { parseProfile } from '@/lib/profile';
+import { useAppStore } from '@/lib/store/appStore';
 import { useDayPlans } from '@/lib/plan/useDayPlans';
 import { BASIS_SHORT, DAY_PLAN_TEXT as T, MEAL_LABELS } from '@/lib/ui-labels';
 
@@ -11,7 +17,13 @@ const buttonClass =
 /** "날짜별 식단": the day plans saved from /plan, newest date first, with delete. */
 export function DayPlanList() {
   const { status, list, refresh, remove } = useDayPlans();
+  const router = useRouter();
+  const app = useAppStore();
+  const profile = parseProfile(app.profile);
   const [confirmDate, setConfirmDate] = useState<string | null>(null);
+  const [confirmIncludeDate, setConfirmIncludeDate] = useState<string | null>(
+    null,
+  );
   const [failed, setFailed] = useState(false);
 
   const del = (date: string) => {
@@ -19,6 +31,25 @@ export function DayPlanList() {
     setFailed(false);
     remove(date).catch(() => setFailed(true));
   };
+
+  // The foods of that day become the "must include" foods and the recommendation screen opens. What cannot be
+  // taken over (not selected now, left out by a style, an oil, over the limit, unknown) is told there.
+  const takeOverFoods = (plan: SavedDayPlan['plan']) => {
+    setConfirmIncludeDate(null);
+    if (!profile) return;
+    const { ids, skipped } = includeFromDayPlan(plan, {
+      selection: app.selection,
+      foods: FOODS,
+      isExcluded: (f) => isFoodExcludedByStyles(f, app.styles, profile.goal),
+      mealsPerDay: profile.mealsPerDay,
+    });
+    app.dropIncludes(ids, skipped);
+    router.push('/plan');
+  };
+  const askInclude = (p: SavedDayPlan) =>
+    app.includeFoods.length > 0
+      ? setConfirmIncludeDate(p.date)
+      : takeOverFoods(p.plan);
 
   return (
     <section aria-label={T.listTitle} className="space-y-3 px-4 pb-8">
@@ -59,6 +90,11 @@ export function DayPlanList() {
                 onAskDelete={() => setConfirmDate(p.date)}
                 onCancel={() => setConfirmDate(null)}
                 onDelete={() => del(p.date)}
+                canInclude={!!profile}
+                includeConfirming={confirmIncludeDate === p.date}
+                onAskInclude={() => askInclude(p)}
+                onInclude={() => takeOverFoods(p.plan)}
+                onCancelInclude={() => setConfirmIncludeDate(null)}
               />
             </li>
           ))}
@@ -76,12 +112,22 @@ function DayPlanCard({
   onAskDelete,
   onCancel,
   onDelete,
+  canInclude,
+  includeConfirming,
+  onAskInclude,
+  onInclude,
+  onCancelInclude,
 }: {
   item: SavedDayPlan;
   confirming: boolean;
   onAskDelete: () => void;
   onCancel: () => void;
   onDelete: () => void;
+  canInclude: boolean;
+  includeConfirming: boolean;
+  onAskInclude: () => void;
+  onInclude: () => void;
+  onCancelInclude: () => void;
 }) {
   const { plan } = item;
   return (
@@ -134,6 +180,42 @@ function DayPlanCard({
             )}
           </section>
         ))}
+      </div>
+      <div className="mt-3 space-y-1">
+        {includeConfirming ? (
+          <div role="group" aria-label={T.includeConfirm} className="space-y-2">
+            <p className="text-sm font-medium">{T.includeConfirm}</p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={onInclude}
+                className={`${buttonClass} bg-emerald-600 text-white`}
+              >
+                {T.includeConfirmYes}
+              </button>
+              <button
+                type="button"
+                onClick={onCancelInclude}
+                className={`${buttonClass} border border-neutral-300 dark:border-neutral-600`}
+              >
+                {T.cancel}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={onAskInclude}
+            disabled={!canInclude}
+            aria-label={`${item.date} ${T.includeButton}`}
+            className={`${buttonClass} border border-emerald-600 text-sm text-emerald-800 disabled:opacity-40 dark:text-emerald-300`}
+          >
+            {T.includeButton}
+          </button>
+        )}
+        <p className="text-xs text-neutral-600 dark:text-neutral-400">
+          {canInclude ? T.includeNote : T.needProfile}
+        </p>
       </div>
       <div className="mt-3">
         {confirming ? (

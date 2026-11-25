@@ -84,6 +84,7 @@ describe('effectiveIncludes', () => {
       () => false,
     );
     expect(r.kept).toEqual([]);
-    expect(r.dropped.map((d) => d.reason)).toEqual(['UNKNOWN', 'UNKNOWN']);
+    // a food that is not in the data and an oil are told apart (they get different notices)
+    expect(r.dropped.map((d) => d.reason)).toEqual(['UNKNOWN', 'OIL']);
   });
 });
