@@ -13,7 +13,7 @@
 - Next.js(App Router) + TypeScript(strict) + Tailwind CSS
 - Supabase(Auth, Postgres, RLS). 마이그레이션은 `supabase/migrations/`에 SQL로.
 - 테스트: Vitest(로직), Playwright(화면 흐름)
-- AI 설명: OpenRouter의 OpenAI 호환 chat completions를 `fetch`로 호출한다(새 패키지 없음). 서버 라우트(`src/app/api/explain/route.ts`)에서만 호출하고, 키 `OPENROUTER_API_KEY`는 서버 전용이다(`NEXT_PUBLIC_` 금지). 모델 이름은 `src/lib/explain/config.ts`의 `DEFAULT_MODEL`(추론이 기본 꺼진 고정 무료 모델)과 `FALLBACK_MODELS`(에러일 때 순서대로 시도, 무료 모델만)에만 적고, 환경변수 `OPENROUTER_MODEL`은 첫 모델을 바꾸는 선택 기능이다(운영에서는 쓰지 않음). AI에는 재료 이름·분량·영양 합계·양념·목표 종류(감량·유지·근육 증가)만 보내고 이메일·계정 ID·몸무게·나이·목표 숫자는 보내지 않는다. 같은 조합은 캐시, 사용자별·사이트 전체 하루 호출 한도(AI 쪽 실패인 상류 429·타임아웃·HTTP 오류·키 없음은 횟수를 돌려준다), 서버 대기 8초·브라우저 대기 15초, 실패하거나 검증에서 탈락하면 AI 없는 기본 문장을 쓴다. 답의 숫자는 입력값(소수는 정수 반올림 포함)만 허용하고 효능 표현은 걸러낸다(`src/lib/explain/validate.ts`).
+- AI 설명: OpenRouter의 OpenAI 호환 chat completions를 `fetch`로 호출한다(새 패키지 없음). 서버 라우트(`src/app/api/explain/route.ts`)에서만 호출하고, 키 `OPENROUTER_API_KEY`는 서버 전용이다(`NEXT_PUBLIC_` 금지). 모델 이름과 모델별 요청 값·대기 시간은 `src/lib/explain/config.ts`의 `MODEL_ATTEMPTS` 한 곳에만 적는다(추론이 기본 꺼진 무료 모델부터 하나씩 순서대로 따로 호출, 추론이 기본 켜진 모델에는 `reasoning: {enabled: false}`). 환경변수 `OPENROUTER_MODEL`은 첫 모델을 바꾸는 선택 기능이다(운영에서는 쓰지 않음). AI에는 재료 이름·분량·영양 합계·양념·목표 종류(감량·유지·근육 증가)만 보내고 이메일·계정 ID·몸무게·나이·목표 숫자는 보내지 않는다. 같은 조합은 캐시(실제로 쓴 모델을 함께 저장), 사용자별·사이트 전체 하루 호출 한도(모든 시도가 AI 쪽 실패인 상류 429·타임아웃·HTTP 오류·키 없음이면 횟수를 돌려준다), 시도별 대기·서버 전체 45초·브라우저 50초, 실패하거나 검증에서 탈락하면 다음 모델(같은 모델은 검증 탈락 때만 1회), 모두 실패하면 AI 없는 기본 문장을 쓴다. 답의 숫자는 입력값(소수는 정수 반올림 포함)만 허용하고 효능 표현은 걸러낸다(`src/lib/explain/validate.ts`).
 
 ## 폴더 구조
 ```
