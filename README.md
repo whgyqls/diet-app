@@ -1,48 +1,143 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 원물 식단
 
-## 필요한 키
+먹을 수 있는 원물 재료를 고르면, 끼니별로 **단백질 + 탄수화물 + 식이섬유 + 지방원 + 양념 권장량** 조합을 추천하는 웹앱입니다.
 
-`.env.sample`을 `.env.local`로 복사한 뒤 값을 채웁니다. `.env.local`은 커밋하지 않습니다. Netlify에서는 같은 이름을 사이트의 환경변수에 직접 입력합니다. 값은 이 저장소에 적지 않습니다.
+배포 주소: <https://wonmul-diet.netlify.app>
 
-| 이름 | 용도 | 공개 여부 |
-|---|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase 프로젝트 주소(경로 없는 `https://<ref>.supabase.co`) | 브라우저에 공개 |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon 키(데이터는 RLS가 보호) | 브라우저에 공개 |
-| `SUPABASE_SERVICE_ROLE_KEY` | 계정 삭제(서버 전용) | **비공개. `NEXT_PUBLIC_` 접두사 금지** |
-| `OPENROUTER_API_KEY` | AI 설명(서버 전용, OpenRouter) | **비공개. `NEXT_PUBLIC_` 접두사 금지** |
-| `OPENROUTER_MODEL` | AI 첫 모델 이름(선택). 비우면 `src/lib/explain/config.ts`의 `DEFAULT_MODEL`(운영에서는 설정하지 않음) | 서버 전용 |
+> 식단 참고용 앱이며 의료 조언이 아닙니다. 건강 상태나 질환이 있다면 전문가와 상담하세요.
 
-테스트용 Supabase 프로젝트의 값은 `.env.test.local`에 넣습니다(`SUPABASE_TEST_PROJECT=1`과 위 세 이름). 운영 프로젝트 값은 거기에 넣지 않습니다.
+## 주요 기능
 
-## Getting Started
+- **조합 추천**: 레시피가 아니라 재료 조합과 분량(g)을 보여줍니다. 재료의 기준(생것/조리 후)도 함께 표시합니다.
+- **내 목표 계산**: 성별, 출생연도, 키, 체중, 활동량, 목표(감량·유지·근육 증가)로 하루 영양 목표를 계산하고, 숫자는 직접 조정할 수 있습니다.
+- **재료 고르기**: 단백질, 탄수화물, 식이섬유, 지방원, 양념을 단계별로 고르고 "좋아함"을 표시합니다.
+- **끼니별 추천**: 끼니별(하루 2~3끼) 탭마다 여러 조합 카드를 넘겨 봅니다.
+- **재료 고정(🔒)**: 마음에 드는 재료를 고정하면 나머지만 다시 추천합니다.
+- **재료 바꾸기**: 카드의 재료를 같은 분류의 다른 재료로 바꾸면 분량이 자동으로 다시 계산됩니다.
+- **조합 비교**: 여러 조합 카드를 골라 나란히 비교합니다.
+- **나트륨 예산**: 재료에 든 나트륨을 뺀 만큼만 양념 분량을 권장합니다.
+- **식단 스타일과 경고**: 식단 스타일을 고를 수 있고, 영양 균형이 크게 벗어나면 이유와 함께 알려 줍니다.
+- **저장**: 마음에 드는 조합(★), 내 재료 세트, 날짜별 식단 기록을 계정에 저장합니다.
+- **다시 추천받기**: 저장한 날짜의 재료를 "꼭 넣을 재료"로 채워 새로 추천받을 수 있습니다.
+- **AI 한 줄 설명**: 카드의 버튼을 누르면 이미 계산된 조합을 쉬운 문장으로 설명합니다.
+- **로그인과 계정 관리**: 이메일 링크 또는 Google로 로그인하고, 설정에서 계정을 삭제할 수 있습니다.
 
-First, run the development server:
+## 기술 스택
+
+| 영역 | 사용 기술 |
+|---|---|
+| 프레임워크 | Next.js (App Router), React, TypeScript(strict), Tailwind CSS |
+| 로그인·저장 | Supabase (Auth, Postgres, RLS) |
+| AI 설명 | OpenRouter의 무료 모델 (서버에서만 호출) |
+| 테스트 | Vitest(로직·DB), Playwright(화면 흐름) |
+| 배포 | Netlify |
+
+## 실행 방법
+
+### 1. 설치
+
+```bash
+npm install
+```
+
+### 2. 환경변수 준비
+
+`.env.sample`을 `.env.local`로 복사한 뒤 값을 채웁니다. `.env.local`은 커밋하지 않습니다.
+
+```bash
+cp .env.sample .env.local
+```
+
+### 3. 개발 서버
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+포트는 **3006**입니다. <http://localhost:3006> 에서 확인합니다. 빌드한 결과를 실행할 때도 같은 포트입니다.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run build
+npm run start
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### 4. 검사와 테스트
 
-## Learn More
+| 명령 | 내용 |
+|---|---|
+| `npm run lint` | ESLint |
+| `npm test` | 단위 테스트(Vitest) |
+| `npm run test:db` | DB·RLS 테스트(테스트용 Supabase 프로젝트 필요) |
+| `npm run test:e2e` | 화면 흐름 테스트(Playwright, 테스트용 Supabase 프로젝트 필요) |
+| `npm run format` | Prettier로 정리 |
 
-To learn more about Next.js, take a look at the following resources:
+DB 테스트와 e2e 테스트는 테스트 전용 프로젝트에서만 돕니다. 값은 `.env.test.local`에 넣습니다(`SUPABASE_TEST_PROJECT=1`과 아래 Supabase 세 이름). 운영 프로젝트의 값은 거기에 넣지 않습니다. 테스트 도우미는 이 조건이 맞지 않으면 계정이나 데이터를 만들기 전에 멈춥니다.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 환경변수
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+값은 이 저장소에 적지 않습니다. Netlify에서는 같은 이름을 사이트의 환경변수에 직접 입력합니다.
 
-## Deploy
+| 이름 | 용도 | 공개 여부 |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase 프로젝트 주소(경로 없는 주소) | 브라우저에 공개 |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon 키(데이터는 RLS가 보호) | 브라우저에 공개 |
+| `SUPABASE_SERVICE_ROLE_KEY` | 계정 삭제(서버 전용) | **비공개. `NEXT_PUBLIC_` 접두사 금지** |
+| `OPENROUTER_API_KEY` | AI 설명(서버 전용) | **비공개. `NEXT_PUBLIC_` 접두사 금지** |
+| `OPENROUTER_MODEL` | AI 첫 모델 이름(선택). 비우면 `src/lib/explain/config.ts`의 기본 모델을 씁니다 | 서버 전용 |
 
-The deployment target is Netlify (database and login stay on Supabase). The checklist is in `PLAN.md`, section 9.1.
+## 폴더 구조
+
+```
+data/                 foods.json, seasonings.json (재료·양념 데이터), raw/ (영양 데이터 원본 변환 파일)
+scripts/              데이터 정제 스크립트
+src/app/              라우트: /, /onboarding, /select, /plan, /saved, /settings, /privacy, /api/explain, /api/account
+src/components/       UI 컴포넌트
+src/lib/nutrition/    영양 계산·분량·순위·조합 생성 (순수 함수 + 단위 테스트)
+src/lib/explain/      AI 설명 (설정, 요청, 검증, 기본 문장)
+src/lib/supabase/     Supabase 클라이언트와 쿼리
+src/types/            공용 타입
+supabase/migrations/  DB 마이그레이션 SQL
+tests/                e2e(Playwright), db(Vitest), helpers
+```
+
+영양 계산, 분량, 순위는 `src/lib/nutrition/`의 순수 함수만 하고, 모든 영양 상수는 `constants.ts` 한 곳에 둡니다. 화면이나 AI는 숫자를 계산하거나 바꾸지 않습니다. 기획 전체는 [PLAN.md](PLAN.md)에 있습니다.
+
+## 데이터베이스 마이그레이션
+
+`supabase/migrations/`의 SQL을 번호 순서대로 Supabase SQL 편집기에서 실행합니다(0001~0004).
+
+| 파일 | 내용 |
+|---|---|
+| `0001_init.sql` | 계정 데이터: 프로필, 먹을 수 있는 재료, 내 재료 세트, 저장한 조합. 모두 본인만 읽고 쓸 수 있는 RLS 적용 |
+| `0002_ai.sql` | AI 설명 캐시와 하루 사용 횟수, 한도를 확인하고 횟수를 세는 함수. 서버(service role)만 접근 |
+| `0003_ai_refund.sql` | AI 쪽 문제로 실패했을 때 센 횟수를 돌려주는 함수 |
+| `0004_day_plans.sql` | 날짜별 식단 기록. 본인만 읽고 쓸 수 있는 RLS 적용, 계정 삭제 시 함께 삭제 |
+
+이 프로젝트는 새 테이블과 함수에 API 권한을 자동으로 주지 않으므로, 필요한 권한을 SQL에서 명시적으로 부여합니다.
+
+## AI 설명 동작
+
+- **서버에서만 호출**: `/api/explain` 서버 라우트에서만 OpenRouter를 부릅니다. 키는 서버 전용이고 브라우저는 AI를 직접 호출하지 않습니다.
+- **버튼을 눌렀을 때만**: 로그인한 사용자가 카드의 버튼을 눌렀을 때만 호출합니다.
+- **무료 모델 순차 시도**: 무료 모델을 정해진 순서대로 하나씩 호출합니다. 실패하면 다음 모델로 넘어가고, 시도별·전체 대기 시간 상한이 있습니다. 모델 목록과 대기 시간은 `src/lib/explain/config.ts` 한 곳에만 적습니다.
+- **캐시**: 같은 조합과 목표 종류는 저장해 둔 설명을 다시 씁니다. 캐시에 쓴 모델도 함께 저장합니다.
+- **하루 한도**: 사용자별, 사이트 전체로 하루 호출 한도가 있습니다. AI 쪽 문제(상류 429, 시간 초과, HTTP 오류, 키 없음)로 모든 시도가 실패하면 센 횟수를 돌려줍니다.
+- **답 검증**: 입력에 없는 숫자와 효능 표현, 길이·문장 수를 넘는 답은 버립니다.
+- **실패 시**: 모든 시도가 실패하면 AI 없이 만든 기본 문장을 보여 주고 "AI 설명" 표시는 붙이지 않습니다. 나머지 화면은 그대로 동작합니다.
+
+## 개인정보·보안 원칙
+
+- AI에는 재료 이름, 분량, 영양 합계, 양념, 목표 종류(감량·유지·근육 증가)만 보냅니다. 이메일, 계정 ID, 몸무게, 나이, 목표 숫자는 보내지 않습니다.
+- 서비스 키(`SUPABASE_SERVICE_ROLE_KEY`, `OPENROUTER_API_KEY`)는 서버 전용입니다. `NEXT_PUBLIC_` 접두사를 붙이지 않습니다.
+- 모든 사용자 데이터 테이블은 RLS로 본인 행만 접근할 수 있습니다.
+- `.env*` 파일은 커밋하지 않고, 코드에 비밀값을 적지 않습니다. 테스트 도우미는 테스트 프로젝트가 아니면 멈춥니다.
+- 화면과 AI 설명에는 질병 예방·치료나 "혈당 개선" 같은 효능 표현을 쓰지 않습니다.
+- 설정에서 계정을 삭제할 수 있습니다. 자세한 내용은 앱의 `/privacy` 화면에 있습니다.
+
+## 데이터 출처
+
+영양 데이터 출처: 식품의약품안전처 식품영양성분 데이터베이스. 공공데이터포털에서 받은 원본을 UTF-8로 변환한 파일이 `data/raw/`에 있습니다. `data/foods.json`의 영양값은 이 파일을 `scripts/curate_foods.py`로 정제해 만든 값입니다. 이용 조건은 원 제공처의 안내를 따릅니다.
+
+## 개발 방식
+
+이 프로젝트는 Claude Code와 협업해 개발했고, 영양 계산과 화면 흐름은 자동 테스트(Vitest, Playwright)로 검증했습니다.
